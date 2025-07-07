@@ -563,8 +563,8 @@ class Coordinator: NSObject, MTKViewDelegate {
         // Adjust azimuth and elevation based on mouse movement
         // Sensitivity factors can be adjusted
         let sensitivity: Float = 0.005
-        cameraAzimuth += deltaX * sensitivity
-        cameraElevation += deltaY * sensitivity
+        cameraAzimuth -= deltaX * sensitivity
+        cameraElevation -= deltaY * sensitivity
         
         // Clamp elevation between -85 and +85 degrees (in radians)
         let maxElevation: Float = (.pi / 2) * 0.94

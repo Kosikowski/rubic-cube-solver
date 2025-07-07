@@ -14,6 +14,12 @@ class Animator {
     
     /// Rotation progress in radians for current move [0 .. ±π/2]
     private(set) var currentAngle: Float = 0
+
+    /// Normalized animation progress (0 to 1) for current move
+    var progress: Float {
+        guard isAnimating, let move = currentMove else { return 0 }
+        return min(Float(elapsed / move.duration), 1)
+    }
     
     /// Current move layer index
     private(set) var currentLayer: Int = 0
