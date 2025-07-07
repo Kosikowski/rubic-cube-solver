@@ -38,19 +38,21 @@ class Animator {
     }
     
     /// Update animation progress by deltaTime seconds
-    /// Returns true if animation is ongoing, false if finished
-    func update(deltaTime: TimeInterval) -> Bool {
-        guard isAnimating, let move = currentMove else { return false }
+    /// Returns the move that just finished, or nil if animation is ongoing or no animation is running
+    func update(deltaTime: TimeInterval) -> Move? {
+        guard isAnimating, let move = currentMove else { return nil }
         elapsed += deltaTime
         let t = min(elapsed / move.duration, 1)
         let angle = Float(t) * move.anglePerStep * currentDirection
         currentAngle = angle
         if t >= 1 {
             isAnimating = false
+            let finishedMove = currentMove
             currentMove = nil
             currentAngle = 0
+            return finishedMove
         }
-        return isAnimating
+        return nil
     }
     
     /// Returns the current transform for the cubes in the rotating layer
@@ -66,3 +68,4 @@ class Animator {
         }
     }
 }
+

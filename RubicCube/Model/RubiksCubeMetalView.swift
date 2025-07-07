@@ -106,36 +106,14 @@ class RubiksCubeViewModel: ObservableObject {
             }
         }
         
-        let animating = animator.update(deltaTime: deltaTime)
-        if !animating, let completedMove = animator.currentMove {
-            // Should never reach here as animator.currentMove is nil when finished
-            // But for safety apply last move
-            cubeState.apply(move: completedMove)
+        // Updated here as per instructions:
+        let finishedMove = animator.update(deltaTime: deltaTime)
+        let animating = (animator.currentMove != nil)
+        if let move = finishedMove {
+            cubeState.apply(move: move)
         }
         
-        // If finished a move this frame, apply final transform and clear animator
-        if !animating, animator.currentMove == nil {
-            // Apply last move permanently if we still hold one (defensive)
-            if let lastMove = animator.currentMove {
-                cubeState.apply(move: lastMove)
-            }
-        }
-        
-        // If animation finished this frame, apply move to cubeState
-        if !animating && animator.currentMove == nil && !moveQueue.isEmpty {
-            // Start next move next frame
-        }
-        
-        // When animation just finished, apply the move transform permanently
-        if !animating && animator.currentMove == nil {
-            // No current animation running: apply completed move to cubeState last frame
-            // So do nothing here, cubeState was updated after animation ended
-        }
-        
-        // When animation just finished: apply last move permanently
-        if !animating && animator.currentMove == nil && !moveQueue.isEmpty {
-            // Nothing to do here, next move will start next frame
-        }
+        // Remove previous redundant checks and comments about applying moves here
         
         // Publish updates for SwiftUI views to redraw
         DispatchQueue.main.async {
