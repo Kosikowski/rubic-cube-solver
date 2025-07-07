@@ -42,6 +42,10 @@ vertex VertexOut vertex_main(
 fragment half4 fragment_main(VertexOut in [[stage_in]]) {
     float3 lightDir = normalize(float3(1,1,1));
     float diff = max(dot(in.normal, lightDir), 0.2);
-    float3 color = in.faceColor * diff + 0.1;
+    float3 displayColor = in.faceColor;
+    if (all(displayColor == float3(0,0,0))) {
+        displayColor = float3(0.15, 0.15, 0.15); // dark gray for internal/invisible faces
+    }
+    float3 color = displayColor * diff + 0.1;
     return half4(color.r, color.g, color.b, 1.0);
 }

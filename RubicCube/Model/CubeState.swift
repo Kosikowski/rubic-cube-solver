@@ -141,6 +141,20 @@ class CubeState {
             }
         }
         
+        print("After move: \(move)")
+        for i in 0..<27 {
+            let pos = CubeState.cubePositions[i]
+            let layerIndex: Int
+            switch move.axis {
+            case .x: layerIndex = pos.x
+            case .y: layerIndex = pos.y
+            case .z: layerIndex = pos.z
+            }
+            if layerIndex == move.layer {
+                print("Cubie at \(pos): faceColors=", newFaceColors[i].map { String(format: "[%.2f %.2f %.2f]", $0.x, $0.y, $0.z) })
+            }
+        }
+        
         transforms = newTransforms
         faceColors = newFaceColors
     }
@@ -148,15 +162,14 @@ class CubeState {
     /// Rotates the 6 face colors of a cubie according to the axis and direction of rotation
     private func rotateFaceColors(_ colors: [SIMD3<Float>], axis: Move.Axis, direction: Move.Direction) -> [SIMD3<Float>] {
         // Faces order: +X, -X, +Y, -Y, +Z, -Z
-        // Rotations permute these colors.
+        // CLOCKWISE means from outside looking at that face.
         var newColors = Array(repeating: SIMD3<Float>(0,0,0), count: 6)
         switch axis {
         case .x:
-            // +Y->+Z, +Z->-Y, -Y->-Z, -Z->+Y (clockwise rotation)
-            // X faces unchanged
             if direction == .clockwise {
-                newColors[0] = colors[0]
-                newColors[1] = colors[1]
+                // +Y->+Z, +Z->-Y, -Y->-Z, -Z->+Y
+                newColors[0] = colors[0] // +X stays
+                newColors[1] = colors[1] // -X stays
                 newColors[2] = colors[4]
                 newColors[3] = colors[5]
                 newColors[4] = colors[3]
@@ -170,9 +183,8 @@ class CubeState {
                 newColors[5] = colors[3]
             }
         case .y:
-            // +Z->+X, +X->-Z, -Z->-X, -X->+Z (clockwise rotation)
-            // Y faces unchanged
             if direction == .clockwise {
+                // +Z->+X, +X->-Z, -Z->-X, -X->+Z (looking from above)
                 newColors[0] = colors[4]
                 newColors[1] = colors[5]
                 newColors[2] = colors[2]
@@ -188,18 +200,17 @@ class CubeState {
                 newColors[5] = colors[1]
             }
         case .z:
-            // +X->+Y, +Y->-X, -X->-Y, -Y->+X (clockwise rotation)
-            // Z faces unchanged
             if direction == .clockwise {
-                newColors[0] = colors[3]
-                newColors[1] = colors[2]
+                // +X->+Y, +Y->-X, -X->-Y, -Y->+X (looking from front)
+                newColors[0] = colors[2]
+                newColors[1] = colors[3]
                 newColors[2] = colors[1]
                 newColors[3] = colors[0]
                 newColors[4] = colors[4]
                 newColors[5] = colors[5]
             } else {
-                newColors[0] = colors[2]
-                newColors[1] = colors[3]
+                newColors[0] = colors[3]
+                newColors[1] = colors[2]
                 newColors[2] = colors[0]
                 newColors[3] = colors[1]
                 newColors[4] = colors[4]

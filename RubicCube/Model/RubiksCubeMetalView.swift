@@ -420,13 +420,13 @@ class Coordinator: NSObject, MTKViewDelegate {
         let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
         
         // Print first 5 cubie transforms
-        print("First 5 cubie transforms:")
-        for idx in 0..<5 {
-            print(viewModel.cubeState.transforms[idx])
-        }
+//        print("First 5 cubie transforms:")
+//        for idx in 0..<5 {
+//            print(viewModel.cubeState.transforms[idx])
+//        }
         
         // Print camera and model bounding info
-        print("Camera eye position: \(eye)")
+//        print("Camera eye position: \(eye)")
         var minPoint = SIMD3<Float>(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
         var maxPoint = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
 
@@ -437,7 +437,7 @@ class Coordinator: NSObject, MTKViewDelegate {
             minPoint = min(minPoint, pos - SIMD3<Float>(0.5, 0.5, 0.5))
             maxPoint = max(maxPoint, pos + SIMD3<Float>(0.5, 0.5, 0.5))
         }
-        print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
+//        print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
         
         // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
         let cubeState = viewModel.cubeState
