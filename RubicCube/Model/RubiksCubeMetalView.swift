@@ -126,6 +126,24 @@ class RubiksCubeViewModel: ObservableObject {
 
 #if os(macOS)
 import AppKit
+
+// Custom MTKView subclass to handle mouse events for camera orbit
+class RubiksCubeMTKView: MTKView {
+    weak var coordinator: Coordinator?
+    
+    override func mouseDown(with event: NSEvent) {
+        coordinator?.mtkViewMouseDown(event)
+    }
+    
+    override func mouseDragged(with event: NSEvent) {
+        coordinator?.mtkViewMouseDragged(event)
+    }
+    
+    override func mouseUp(with event: NSEvent) {
+        coordinator?.mtkViewMouseUp(event)
+    }
+}
+
 struct RubiksCubeMetalView: NSViewRepresentable {
     @ObservedObject var viewModel: RubiksCubeViewModel
     
@@ -134,13 +152,22 @@ struct RubiksCubeMetalView: NSViewRepresentable {
     }
     
     func makeNSView(context: Context) -> MTKView {
-        let mtkView = MTKView()
+        let mtkView = RubiksCubeMTKView()
         mtkView.device = MTLCreateSystemDefaultDevice()
         mtkView.delegate = context.coordinator
         mtkView.preferredFramesPerSecond = 60
         mtkView.framebufferOnly = false
         mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
         mtkView.depthStencilPixelFormat = .depth32Float
+        mtkView.coordinator = context.coordinator
+        
+        // Enable tracking area for mouse events if needed (optional)
+        let trackingArea = NSTrackingArea(rect: mtkView.bounds,
+                                          options: [.activeAlways, .mouseEnteredAndExited, .mouseMoved, .inVisibleRect],
+                                          owner: mtkView,
+                                          userInfo: nil)
+        mtkView.addTrackingArea(trackingArea)
+        
         return mtkView
     }
     
@@ -221,6 +248,14 @@ class Coordinator: NSObject, MTKViewDelegate {
         var modelMatrix: simd_float4x4
         var faceColors: (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)
     }
+    
+    // --- Camera Orbit Support (macOS only for now) ---
+    // Azimuth and elevation angles in radians
+    var cameraAzimuth: Float = 0
+    var cameraElevation: Float = .pi / 8  // ~22.5 degrees
+    var cameraDistance: Float = 6
+    var lastMouseLocation: CGPoint = .zero
+    var isDraggingCamera: Bool = false
     
     init(viewModel: RubiksCubeViewModel) {
         self.viewModel = viewModel
@@ -397,8 +432,16 @@ class Coordinator: NSObject, MTKViewDelegate {
         
         let projectionMatrix = simd_float4x4(perspectiveFov: fov, aspectRatio: aspect, nearZ: near, farZ: far)
         
-        // Camera looks at the center of cube at (0,0,0) from a distance (e.g. z=6)
-        let eye = SIMD3<Float>(0, 0, 6)
+        // --- Camera Orbit calculations ---
+        // Calculate eye position from spherical coordinates: azimuth, elevation, distance
+        let r = cameraDistance
+        let eye = SIMD3<Float>(
+            r * cos(cameraElevation) * sin(cameraAzimuth),
+            r * sin(cameraElevation),
+            r * cos(cameraElevation) * cos(cameraAzimuth)
+        )
+        
+        // Camera looks at the center of cube at (0,0,0)
         let center = SIMD3<Float>(0, 0, 0)
         let up = SIMD3<Float>(0, 1, 0)
         let viewMatrix = simd_float4x4(lookAtEye: eye, center: center, up: up)
@@ -467,8 +510,8 @@ class Coordinator: NSObject, MTKViewDelegate {
                 if layerIndex == rotatingLayer {
                     // Apply animation rotation around axis center
                     // Translate cubie center to origin (cube center at 0,0,0), rotate, translate back
-                    let translationToCenter = simd_float4x4(translation: -SIMD3<Float>(0,0,0))
-                    let translationBack = simd_float4x4(translation: SIMD3<Float>(0,0,0))
+//                    let translationToCenter = simd_float4x4(translation: -SIMD3<Float>(0,0,0))
+//                    let translationBack = simd_float4x4(translation: SIMD3<Float>(0,0,0))
                     // We can just multiply rotation * modelMatrix because modelMatrix already includes position offset
                     modelMatrix = rotationMatrix * modelMatrix
                 }
@@ -503,6 +546,43 @@ class Coordinator: NSObject, MTKViewDelegate {
         commandBuffer?.present(drawable)
         commandBuffer?.commit()
     }
+    
+    // MARK: - Mouse event handlers for camera orbit (macOS only)
+    #if os(macOS)
+    func mtkViewMouseDown(_ event: NSEvent) {
+        isDraggingCamera = true
+        lastMouseLocation = event.locationInWindow
+    }
+    
+    func mtkViewMouseDragged(_ event: NSEvent) {
+        guard isDraggingCamera else { return }
+        let currentLocation = event.locationInWindow
+        let deltaX = Float(currentLocation.x - lastMouseLocation.x)
+        let deltaY = Float(currentLocation.y - lastMouseLocation.y)
+        
+        // Adjust azimuth and elevation based on mouse movement
+        // Sensitivity factors can be adjusted
+        let sensitivity: Float = 0.005
+        cameraAzimuth += deltaX * sensitivity
+        cameraElevation += deltaY * sensitivity
+        
+        // Clamp elevation between -85 and +85 degrees (in radians)
+        let maxElevation: Float = (.pi / 2) * 0.94
+        let minElevation: Float = -maxElevation
+        cameraElevation = min(max(cameraElevation, minElevation), maxElevation)
+        
+        lastMouseLocation = currentLocation
+        
+        // Request redraw
+        if let mtkView = event.window?.contentView?.subviews.compactMap({ $0 as? MTKView }).first {
+            mtkView.setNeedsDisplay(mtkView.bounds)
+        }
+    }
+    
+    func mtkViewMouseUp(_ event: NSEvent) {
+        isDraggingCamera = false
+    }
+    #endif
 }
 
 
