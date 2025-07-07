@@ -162,6 +162,7 @@ struct RubiksCubeMetalView: NSViewRepresentable {
         mtkView.preferredFramesPerSecond = 60
         mtkView.framebufferOnly = false
         mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
+        mtkView.depthStencilPixelFormat = .depth32Float
         return mtkView
     }
     
@@ -185,6 +186,7 @@ struct RubiksCubeMetalView: UIViewRepresentable {
         mtkView.preferredFramesPerSecond = 60
         mtkView.framebufferOnly = false
         mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
+        mtkView.depthStencilPixelFormat = .depth32Float
         return mtkView
     }
     
@@ -194,318 +196,336 @@ struct RubiksCubeMetalView: UIViewRepresentable {
 }
 #endif
     
-    class Coordinator: NSObject, MTKViewDelegate {
-        let viewModel: RubiksCubeViewModel
-        var pipelineState: MTLRenderPipelineState!
-        var commandQueue: MTLCommandQueue!
-        
-        // Buffers
-        var vertexBuffer: MTLBuffer!
-        var indexBuffer: MTLBuffer!
-        
-        // Cubie instance uniform buffer (transforms + colors)
-        var instanceUniformBuffer: MTLBuffer!
-        
-        // Uniforms buffer for view/projection and lighting
-        var uniformsBuffer: MTLBuffer!
-        
-        // Vertex data for a single cubie (a cube)
-        struct Vertex {
-            var position: SIMD3<Float>
-            var normal: SIMD3<Float>
+class Coordinator: NSObject, MTKViewDelegate {
+    let viewModel: RubiksCubeViewModel
+    var pipelineState: MTLRenderPipelineState!
+    var commandQueue: MTLCommandQueue!
+    
+    // Buffers
+    var vertexBuffer: MTLBuffer!
+    var indexBuffer: MTLBuffer!
+    
+    // Cubie instance uniform buffer (transforms + colors)
+    var instanceUniformBuffer: MTLBuffer!
+    
+    // Uniforms buffer for view/projection and lighting
+    var uniformsBuffer: MTLBuffer!
+    
+    // Depth stencil state
+    var depthStencilState: MTLDepthStencilState!
+    
+    // Vertex data for a single cubie (a cube)
+    struct Vertex {
+        var position: SIMD3<Float>
+        var normal: SIMD3<Float>
+    }
+    
+    // Uniforms sent to vertex shader
+    struct Uniforms {
+        var vpMatrix: simd_float4x4
+        var lightPos: SIMD3<Float>
+        var padding: Float = 0
+    }
+    
+    // Per-instance uniform: model matrix + 6 face colors (RGB per face)
+    struct InstanceUniforms {
+        var modelMatrix: simd_float4x4
+        var faceColors: SIMD3<Float>  // We'll pass colors as 6 * float3 consecutively
+    }
+    
+    struct InstanceData {
+        var modelMatrix: simd_float4x4
+        var faceColors: [SIMD3<Float>]  // 6 faces
+    }
+    
+    // We will store modelMatrix + 6 face colors per cubie
+    struct InstanceUniformsPacked {
+        var modelMatrix: simd_float4x4
+        var faceColors: (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)
+    }
+    
+    init(viewModel: RubiksCubeViewModel) {
+        self.viewModel = viewModel
+        super.init()
+        setupMetal()
+        createBuffers()
+    }
+    
+    func setupMetal() {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            fatalError("Metal device not available")
         }
-        
-        // Uniforms sent to vertex shader
-        struct Uniforms {
-            var vpMatrix: simd_float4x4
-            var lightPos: SIMD3<Float>
-            var padding: Float = 0
-        }
-        
-        // Per-instance uniform: model matrix + 6 face colors (RGB per face)
-        struct InstanceUniforms {
-            var modelMatrix: simd_float4x4
-            var faceColors: SIMD3<Float>  // We'll pass colors as 6 * float3 consecutively
-        }
-        
-        struct InstanceData {
-            var modelMatrix: simd_float4x4
-            var faceColors: [SIMD3<Float>]  // 6 faces
-        }
-        
-        // We will store modelMatrix + 6 face colors per cubie
-        struct InstanceUniformsPacked {
-            var modelMatrix: simd_float4x4
-            var faceColors: (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)
-        }
-        
-        init(viewModel: RubiksCubeViewModel) {
-            self.viewModel = viewModel
-            super.init()
-            setupMetal()
-            createBuffers()
-        }
-        
-        func setupMetal() {
-            guard let device = MTLCreateSystemDefaultDevice() else {
-                fatalError("Metal device not available")
-            }
-            commandQueue = device.makeCommandQueue()
-            do {
-                let library = device.makeDefaultLibrary()
-                let pipelineDescriptor = MTLRenderPipelineDescriptor()
-                pipelineDescriptor.vertexFunction = library?.makeFunction(name: "vertex_main")
-                pipelineDescriptor.fragmentFunction = library?.makeFunction(name: "fragment_main")
-                pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
-                pipelineDescriptor.vertexDescriptor = makeVertexDescriptor()
-                pipelineDescriptor.isRasterizationEnabled = true
-                // Removed line: pipelineDescriptor.cullMode = .none
-                pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
-            } catch {
-                fatalError("Metal pipeline error: \(error)")
-            }
-        }
-        
-        func makeVertexDescriptor() -> MTLVertexDescriptor {
-            let vertexDescriptor = MTLVertexDescriptor()
-            // Positions
-            vertexDescriptor.attributes[0].format = .float3
-            vertexDescriptor.attributes[0].offset = 0
-            vertexDescriptor.attributes[0].bufferIndex = 0
-            // Normals
-            vertexDescriptor.attributes[1].format = .float3
-            vertexDescriptor.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
-            vertexDescriptor.attributes[1].bufferIndex = 0
-            vertexDescriptor.layouts[0].stride = MemoryLayout<Vertex>.stride
-            vertexDescriptor.layouts[0].stepFunction = .perVertex
+        commandQueue = device.makeCommandQueue()
+        do {
+            let library = device.makeDefaultLibrary()
+            let pipelineDescriptor = MTLRenderPipelineDescriptor()
+            pipelineDescriptor.vertexFunction = library?.makeFunction(name: "vertex_main")
+            pipelineDescriptor.fragmentFunction = library?.makeFunction(name: "fragment_main")
+            pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+            pipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
+            pipelineDescriptor.vertexDescriptor = makeVertexDescriptor()
+            pipelineDescriptor.isRasterizationEnabled = true
+            // Removed line: pipelineDescriptor.cullMode = .none
+            pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
             
-            // Instance attributes: model matrix 4x4 (4 x float4 attributes)
-            // We'll use buffer index 1 for instance data
+            let depthDescriptor = MTLDepthStencilDescriptor()
+            depthDescriptor.depthCompareFunction = .less
+            depthDescriptor.isDepthWriteEnabled = true
+            depthStencilState = device.makeDepthStencilState(descriptor: depthDescriptor)
             
-            // Model matrix columns as 4 float4 attributes
-            for i in 0..<4 {
-                vertexDescriptor.attributes[2 + i].format = .float4
-                vertexDescriptor.attributes[2 + i].offset = i * MemoryLayout<SIMD4<Float>>.stride
-                vertexDescriptor.attributes[2 + i].bufferIndex = 1
-            }
-            // Face colors (6 x float3) - 6 * 12 bytes = 72 bytes offset after model matrix
-            // We'll pack face colors starting at offset 64 bytes (modelMatrix = 64 bytes)
-            let faceColorsOffset = MemoryLayout<simd_float4x4>.stride
-            for i in 0..<6 {
-                vertexDescriptor.attributes[6 + i].format = .float3
-                vertexDescriptor.attributes[6 + i].offset = faceColorsOffset + i * MemoryLayout<SIMD3<Float>>.stride
-                vertexDescriptor.attributes[6 + i].bufferIndex = 1
-            }
-            vertexDescriptor.layouts[1].stride = faceColorsOffset + 6 * MemoryLayout<SIMD3<Float>>.stride
-            vertexDescriptor.layouts[1].stepFunction = .perInstance
-            
-            return vertexDescriptor
-        }
-        
-        func createBuffers() {
-            let device = commandQueue.device
-            
-            // Cube vertices - unit cube centered at origin, size 1 (each cubie is 1 unit cube)
-            // We'll define 24 vertices (4 per face * 6 faces) to have proper normals.
-            // This allows flat shading per face.
-            
-            let vertices: [Vertex] = [
-                // +X face (Right)
-                Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(1, 0, 0)),
-                Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(1, 0, 0)),
-                Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(1, 0, 0)),
-                Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(1, 0, 0)),
-                
-                // -X face (Left)
-                Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(-1, 0, 0)),
-                Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(-1, 0, 0)),
-                Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(-1, 0, 0)),
-                Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(-1, 0, 0)),
-                
-                // +Y face (Top)
-                Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 1, 0)),
-                Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 1, 0)),
-                Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 1, 0)),
-                Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 1, 0)),
-                
-                // -Y face (Bottom)
-                Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(0, -1, 0)),
-                Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(0, -1, 0)),
-                Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(0, -1, 0)),
-                Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(0, -1, 0)),
-                
-                // +Z face (Front)
-                Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
-                Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
-                Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
-                Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
-                
-                // -Z face (Back)
-                Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
-                Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
-                Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
-                Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
-            ]
-            
-            vertexBuffer = device.makeBuffer(bytes: vertices,
-                                             length: MemoryLayout<Vertex>.stride * vertices.count,
-                                             options: [])
-            
-            // Indices for triangles (6 faces, 2 triangles per face, 3 indices each = 36)
-            // Each face uses 4 vertices in order: 0,1,2,3
-            let indices: [UInt16] = [
-                0, 1, 2, 0, 2, 3,       // +X
-                4, 5, 6, 4, 6, 7,       // -X
-                8, 9, 10, 8, 10, 11,    // +Y
-                12, 13, 14, 12, 14, 15, // -Y
-                16, 17, 18, 16, 18, 19, // +Z
-                20, 21, 22, 20, 22, 23  // -Z
-            ]
-            
-            indexBuffer = device.makeBuffer(bytes: indices,
-                                            length: MemoryLayout<UInt16>.stride * indices.count,
-                                            options: [])
-            
-            // Create instance uniform buffer for 27 cubies
-            instanceUniformBuffer = device.makeBuffer(length: MemoryLayout<simd_float4x4>.stride * 27 + MemoryLayout<SIMD3<Float>>.stride * 6 * 27, options: [])
-            
-            // Uniforms buffer for VP matrix and light
-            uniformsBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.stride, options: [])
-        }
-        
-        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-            // Nothing needed here for now
-        }
-        
-        func draw(in view: MTKView) {
-            guard let drawable = view.currentDrawable,
-                  let descriptor = view.currentRenderPassDescriptor,
-                  let device = view.device,
-                  let commandQueue = commandQueue else { return }
-            
-            let commandBuffer = commandQueue.makeCommandBuffer()
-            guard let encoder = commandBuffer?.makeRenderCommandEncoder(descriptor: descriptor) else {
-                commandBuffer?.commit()
-                return
-            }
-            
-            encoder.setRenderPipelineState(pipelineState)
-            encoder.setCullMode(.none)
-            
-            // Setup camera: view-projection matrix
-            let aspect = Float(view.drawableSize.width / view.drawableSize.height)
-            let fov: Float = 90 * (.pi / 180)
-            let near: Float = 0.1
-            let far: Float = 100
-            
-            let projectionMatrix = simd_float4x4(perspectiveFov: fov, aspectRatio: aspect, nearZ: near, farZ: far)
-            
-            // Camera looks at the center of cube at (0,0,0) from a distance (e.g. z=14)
-            let eye = SIMD3<Float>(0, 0, 38)
-            let center = SIMD3<Float>(0, 0, 0)
-            let up = SIMD3<Float>(0, 1, 0)
-            let viewMatrix = simd_float4x4(lookAtEye: eye, center: center, up: up)
-            
-            let vpMatrix = projectionMatrix * viewMatrix
-            
-            // Light position in world space (e.g. same as eye)
-            let lightPos = eye
-            
-            // Upload uniforms
-            var uniforms = Uniforms(vpMatrix: vpMatrix, lightPos: lightPos)
-            memcpy(uniformsBuffer.contents(), &uniforms, MemoryLayout<Uniforms>.stride)
-            encoder.setVertexBuffer(uniformsBuffer, offset: 0, index: 2)
-            
-            // Prepare per-instance uniforms buffer with transforms + face colors
-            // Size per instance = modelMatrix (64 bytes) + 6 * float3 (72 bytes) = 136 bytes
-            // We'll pack face colors consecutively after modelMatrix
-            
-            let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
-            
-            // Print first 5 cubie transforms
-            print("First 5 cubie transforms:")
-            for idx in 0..<5 {
-                print(viewModel.cubeState.transforms[idx])
-            }
-            
-            // Print camera and model bounding info
-            print("Camera eye position: \(eye)")
-            var minPoint = SIMD3<Float>(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
-            var maxPoint = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
-
-            for i in 0..<27 {
-                let modelMatrix = viewModel.cubeState.transforms[i]
-                // Each cubie is a unit cube centered at its transform's translation.
-                let pos = SIMD3<Float>(modelMatrix.columns.3.x, modelMatrix.columns.3.y, modelMatrix.columns.3.z)
-                minPoint = min(minPoint, pos - SIMD3<Float>(0.5, 0.5, 0.5))
-                maxPoint = max(maxPoint, pos + SIMD3<Float>(0.5, 0.5, 0.5))
-            }
-            print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
-            
-            // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
-            let cubeState = viewModel.cubeState
-            let animator = viewModel.animator
-            
-            // Rotation matrix for current move animation (optional)
-            let rotationMatrixOpt = animator.rotationMatrix()
-            let rotatingAxis = animator.currentAxis
-            let rotatingLayer = animator.currentLayer
-            
-            for i in 0..<27 {
-                let pos = CubeState.cubePositions[i]
-                let baseOffset = i * 136
-                
-                // Determine if this cubie is on the rotating layer:
-                var modelMatrix = cubeState.transforms[i]
-                
-                if let rotationMatrix = rotationMatrixOpt {
-                    // Check if cubie is in rotating layer
-                    let layerIndex: Int
-                    switch rotatingAxis {
-                    case .x: layerIndex = pos.x
-                    case .y: layerIndex = pos.y
-                    case .z: layerIndex = pos.z
-                    }
-                    if layerIndex == rotatingLayer {
-                        // Apply animation rotation around axis center
-                        // Translate cubie center to origin (cube center at 0,0,0), rotate, translate back
-                        let translationToCenter = simd_float4x4(translation: -SIMD3<Float>(0,0,0))
-                        let translationBack = simd_float4x4(translation: SIMD3<Float>(0,0,0))
-                        // We can just multiply rotation * modelMatrix because modelMatrix already includes position offset
-                        modelMatrix = rotationMatrix * modelMatrix
-                    }
-                }
-                
-                // Write modelMatrix (float4x4)
-                let modelMatrixPtr = instanceBufferRawPointer.advanced(by: baseOffset).assumingMemoryBound(to: simd_float4x4.self)
-                modelMatrixPtr.pointee = modelMatrix
-                
-                // Write face colors as 6 float3 sequentially after modelMatrix
-                let colorsStart = baseOffset + MemoryLayout<simd_float4x4>.stride
-                let colorsPtr = instanceBufferRawPointer.advanced(by: colorsStart).assumingMemoryBound(to: SIMD3<Float>.self)
-                let colors = cubeState.faceColors[i]
-                for f in 0..<6 {
-                    colorsPtr[f] = colors[f]
-                }
-            }
-            
-            encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
-            encoder.setVertexBuffer(instanceUniformBuffer, offset: 0, index: 1)
-            // Removed encoder.setIndexBuffer(indexBuffer, offset: 0, indexType: .uint16)
-            
-            // Draw instanced geometry: 27 cubies, 36 indices each
-            encoder.drawIndexedPrimitives(type: .triangle,
-                                          indexCount: 36,
-                                          indexType: MTLIndexType.uint16,
-                                          indexBuffer: indexBuffer,
-                                          indexBufferOffset: 0,
-                                          instanceCount: 27)
-            
-            encoder.endEncoding()
-            commandBuffer?.present(drawable)
-            commandBuffer?.commit()
+        } catch {
+            fatalError("Metal pipeline error: \(error)")
         }
     }
+    
+    func makeVertexDescriptor() -> MTLVertexDescriptor {
+        let vertexDescriptor = MTLVertexDescriptor()
+        // Positions
+        vertexDescriptor.attributes[0].format = .float3
+        vertexDescriptor.attributes[0].offset = 0
+        vertexDescriptor.attributes[0].bufferIndex = 0
+        // Normals
+        vertexDescriptor.attributes[1].format = .float3
+        vertexDescriptor.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
+        vertexDescriptor.attributes[1].bufferIndex = 0
+        vertexDescriptor.layouts[0].stride = MemoryLayout<Vertex>.stride
+        vertexDescriptor.layouts[0].stepFunction = .perVertex
+        
+        // Instance attributes: model matrix 4x4 (4 x float4 attributes)
+        // We'll use buffer index 1 for instance data
+        
+        // Model matrix columns as 4 float4 attributes
+        for i in 0..<4 {
+            vertexDescriptor.attributes[2 + i].format = .float4
+            vertexDescriptor.attributes[2 + i].offset = i * MemoryLayout<SIMD4<Float>>.stride
+            vertexDescriptor.attributes[2 + i].bufferIndex = 1
+        }
+        // Face colors (6 x float3) - 6 * 12 bytes = 72 bytes offset after model matrix
+        // We'll pack face colors starting at offset 64 bytes (modelMatrix = 64 bytes)
+        let faceColorsOffset = MemoryLayout<simd_float4x4>.stride
+        for i in 0..<6 {
+            vertexDescriptor.attributes[6 + i].format = .float3
+            vertexDescriptor.attributes[6 + i].offset = faceColorsOffset + i * MemoryLayout<SIMD3<Float>>.stride
+            vertexDescriptor.attributes[6 + i].bufferIndex = 1
+        }
+        vertexDescriptor.layouts[1].stride = faceColorsOffset + 6 * MemoryLayout<SIMD3<Float>>.stride
+        vertexDescriptor.layouts[1].stepFunction = .perInstance
+        
+        return vertexDescriptor
+    }
+    
+    func createBuffers() {
+        let device = commandQueue.device
+        
+        // Cube vertices - unit cube centered at origin, size 1 (each cubie is 1 unit cube)
+        // We'll define 24 vertices (4 per face * 6 faces) to have proper normals.
+        // This allows flat shading per face.
+        
+        let vertices: [Vertex] = [
+            // +X face (Right)
+            Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(1, 0, 0)),
+            Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(1, 0, 0)),
+            Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(1, 0, 0)),
+            Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(1, 0, 0)),
+            
+            // -X face (Left)
+            Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(-1, 0, 0)),
+            Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(-1, 0, 0)),
+            Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(-1, 0, 0)),
+            Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(-1, 0, 0)),
+            
+            // +Y face (Top)
+            Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 1, 0)),
+            Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 1, 0)),
+            Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 1, 0)),
+            Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 1, 0)),
+            
+            // -Y face (Bottom)
+            Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(0, -1, 0)),
+            Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(0, -1, 0)),
+            Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(0, -1, 0)),
+            Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(0, -1, 0)),
+            
+            // +Z face (Front)
+            Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+            Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+            Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+            Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+            
+            // -Z face (Back)
+            Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+            Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+            Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+            Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+        ]
+        
+        vertexBuffer = device.makeBuffer(bytes: vertices,
+                                         length: MemoryLayout<Vertex>.stride * vertices.count,
+                                         options: [])
+        
+        // Indices for triangles (6 faces, 2 triangles per face, 3 indices each = 36)
+        // Each face uses 4 vertices in order: 0,1,2,3
+        let indices: [UInt16] = [
+            0, 1, 2, 0, 2, 3,       // +X
+            4, 5, 6, 4, 6, 7,       // -X
+            8, 9, 10, 8, 10, 11,    // +Y
+            12, 13, 14, 12, 14, 15, // -Y
+            16, 17, 18, 16, 18, 19, // +Z
+            20, 21, 22, 20, 22, 23  // -Z
+        ]
+        
+        indexBuffer = device.makeBuffer(bytes: indices,
+                                        length: MemoryLayout<UInt16>.stride * indices.count,
+                                        options: [])
+        
+        // Create instance uniform buffer for 27 cubies
+        // Replace original allocation with: (buffer fix)
+        let instanceStride = MemoryLayout<simd_float4x4>.stride + MemoryLayout<SIMD3<Float>>.stride * 6
+        instanceUniformBuffer = device.makeBuffer(length: instanceStride * 27, options: [])
+        
+        // Uniforms buffer for VP matrix and light
+        uniformsBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.stride, options: [])
+    }
+    
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        // Nothing needed here for now
+    }
+    
+    func draw(in view: MTKView) {
+        guard let drawable = view.currentDrawable,
+              let descriptor = view.currentRenderPassDescriptor,
+              let device = view.device,
+              let commandQueue = commandQueue else { return }
+        
+        if descriptor.depthAttachment == nil {
+            fatalError("No depth attachment in render pass descriptor! Check your MTKView depthStencilPixelFormat and that the view is onscreen.")
+        }
+        
+        let commandBuffer = commandQueue.makeCommandBuffer()
+        guard let encoder = commandBuffer?.makeRenderCommandEncoder(descriptor: descriptor) else {
+            commandBuffer?.commit()
+            return
+        }
+        
+        encoder.setRenderPipelineState(pipelineState)
+        encoder.setCullMode(.none)
+        encoder.setDepthStencilState(depthStencilState)
+        
+        // Setup camera: view-projection matrix
+        let aspect = Float(view.drawableSize.width / view.drawableSize.height)
+        let fov: Float = 90 * (.pi / 180)
+        let near: Float = 0.1
+        let far: Float = 100
+        
+        let projectionMatrix = simd_float4x4(perspectiveFov: fov, aspectRatio: aspect, nearZ: near, farZ: far)
+        
+        // Camera looks at the center of cube at (0,0,0) from a distance (e.g. z=6)
+        let eye = SIMD3<Float>(0, 0, 6)
+        let center = SIMD3<Float>(0, 0, 0)
+        let up = SIMD3<Float>(0, 1, 0)
+        let viewMatrix = simd_float4x4(lookAtEye: eye, center: center, up: up)
+        
+        let vpMatrix = projectionMatrix * viewMatrix
+        
+        // Light position in world space (e.g. same as eye)
+        let lightPos = eye
+        
+        // Upload uniforms
+        var uniforms = Uniforms(vpMatrix: vpMatrix, lightPos: lightPos)
+        memcpy(uniformsBuffer.contents(), &uniforms, MemoryLayout<Uniforms>.stride)
+        encoder.setVertexBuffer(uniformsBuffer, offset: 0, index: 2)
+        
+        // Prepare per-instance uniforms buffer with transforms + face colors
+        // Size per instance = modelMatrix (64 bytes) + 6 * float3 (72 bytes) = 136 bytes
+        // We'll pack face colors consecutively after modelMatrix
+        
+        let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
+        
+        // Print first 5 cubie transforms
+        print("First 5 cubie transforms:")
+        for idx in 0..<5 {
+            print(viewModel.cubeState.transforms[idx])
+        }
+        
+        // Print camera and model bounding info
+        print("Camera eye position: \(eye)")
+        var minPoint = SIMD3<Float>(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
+        var maxPoint = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
+
+        for i in 0..<27 {
+            let modelMatrix = viewModel.cubeState.transforms[i]
+            // Each cubie is a unit cube centered at its transform's translation.
+            let pos = SIMD3<Float>(modelMatrix.columns.3.x, modelMatrix.columns.3.y, modelMatrix.columns.3.z)
+            minPoint = min(minPoint, pos - SIMD3<Float>(0.5, 0.5, 0.5))
+            maxPoint = max(maxPoint, pos + SIMD3<Float>(0.5, 0.5, 0.5))
+        }
+        print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
+        
+        // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
+        let cubeState = viewModel.cubeState
+        let animator = viewModel.animator
+        
+        // Rotation matrix for current move animation (optional)
+        let rotationMatrixOpt = animator.rotationMatrix()
+        let rotatingAxis = animator.currentAxis
+        let rotatingLayer = animator.currentLayer
+        
+        for i in 0..<27 {
+            let pos = CubeState.cubePositions[i]
+            /// fixe for buffer
+            let baseOffset = i * (MemoryLayout<simd_float4x4>.stride + MemoryLayout<SIMD3<Float>>.stride * 6)
+            
+            // Determine if this cubie is on the rotating layer:
+            var modelMatrix = cubeState.transforms[i]
+            
+            if let rotationMatrix = rotationMatrixOpt {
+                // Check if cubie is in rotating layer
+                let layerIndex: Int
+                switch rotatingAxis {
+                case .x: layerIndex = pos.x
+                case .y: layerIndex = pos.y
+                case .z: layerIndex = pos.z
+                }
+                if layerIndex == rotatingLayer {
+                    // Apply animation rotation around axis center
+                    // Translate cubie center to origin (cube center at 0,0,0), rotate, translate back
+                    let translationToCenter = simd_float4x4(translation: -SIMD3<Float>(0,0,0))
+                    let translationBack = simd_float4x4(translation: SIMD3<Float>(0,0,0))
+                    // We can just multiply rotation * modelMatrix because modelMatrix already includes position offset
+                    modelMatrix = rotationMatrix * modelMatrix
+                }
+            }
+            
+            // Write modelMatrix (float4x4)
+            let modelMatrixPtr = instanceBufferRawPointer.advanced(by: baseOffset).assumingMemoryBound(to: simd_float4x4.self)
+            modelMatrixPtr.pointee = modelMatrix
+            
+            // Write face colors as 6 float3 sequentially after modelMatrix
+            let colorsStart = baseOffset + MemoryLayout<simd_float4x4>.stride
+            let colorsPtr = instanceBufferRawPointer.advanced(by: colorsStart).assumingMemoryBound(to: SIMD3<Float>.self)
+            let colors = cubeState.faceColors[i]
+            for f in 0..<6 {
+                colorsPtr[f] = colors[f]
+            }
+        }
+        
+        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+        encoder.setVertexBuffer(instanceUniformBuffer, offset: 0, index: 1)
+        // Removed encoder.setIndexBuffer(indexBuffer, offset: 0, indexType: .uint16)
+        
+        // Draw instanced geometry: 1 cubie only, 36 indices each
+        encoder.drawIndexedPrimitives(type: .triangle,
+                                      indexCount: 36,
+                                      indexType: MTLIndexType.uint16,
+                                      indexBuffer: indexBuffer,
+                                      indexBufferOffset: 0,
+                                      instanceCount: 27)
+        
+        encoder.endEncoding()
+        commandBuffer?.present(drawable)
+        commandBuffer?.commit()
+    }
+}
 
 
 // MARK: - simd_float4x4 Extensions for common transforms
@@ -559,3 +579,4 @@ extension simd_float4x4 {
                   SIMD4<Float>(t.x, t.y, t.z, 1))
     }
 }
+
