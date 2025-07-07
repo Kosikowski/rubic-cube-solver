@@ -258,6 +258,8 @@ struct RubiksCubeMetalView: UIViewRepresentable {
                 pipelineDescriptor.fragmentFunction = library?.makeFunction(name: "fragment_main")
                 pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
                 pipelineDescriptor.vertexDescriptor = makeVertexDescriptor()
+                pipelineDescriptor.isRasterizationEnabled = true
+                // Removed line: pipelineDescriptor.cullMode = .none
                 pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
             } catch {
                 fatalError("Metal pipeline error: \(error)")
@@ -388,17 +390,18 @@ struct RubiksCubeMetalView: UIViewRepresentable {
             }
             
             encoder.setRenderPipelineState(pipelineState)
+            encoder.setCullMode(.none)
             
             // Setup camera: view-projection matrix
             let aspect = Float(view.drawableSize.width / view.drawableSize.height)
-            let fov: Float = 65 * (.pi / 180)
+            let fov: Float = 90 * (.pi / 180)
             let near: Float = 0.1
             let far: Float = 100
             
             let projectionMatrix = simd_float4x4(perspectiveFov: fov, aspectRatio: aspect, nearZ: near, farZ: far)
             
-            // Camera looks at the center of cube at (0,0,0) from a distance (e.g. z=6)
-            let eye = SIMD3<Float>(3, 3, 6)
+            // Camera looks at the center of cube at (0,0,0) from a distance (e.g. z=14)
+            let eye = SIMD3<Float>(0, 0, 38)
             let center = SIMD3<Float>(0, 0, 0)
             let up = SIMD3<Float>(0, 1, 0)
             let viewMatrix = simd_float4x4(lookAtEye: eye, center: center, up: up)
@@ -418,6 +421,26 @@ struct RubiksCubeMetalView: UIViewRepresentable {
             // We'll pack face colors consecutively after modelMatrix
             
             let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
+            
+            // Print first 5 cubie transforms
+            print("First 5 cubie transforms:")
+            for idx in 0..<5 {
+                print(viewModel.cubeState.transforms[idx])
+            }
+            
+            // Print camera and model bounding info
+            print("Camera eye position: \(eye)")
+            var minPoint = SIMD3<Float>(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
+            var maxPoint = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
+
+            for i in 0..<27 {
+                let modelMatrix = viewModel.cubeState.transforms[i]
+                // Each cubie is a unit cube centered at its transform's translation.
+                let pos = SIMD3<Float>(modelMatrix.columns.3.x, modelMatrix.columns.3.y, modelMatrix.columns.3.z)
+                minPoint = min(minPoint, pos - SIMD3<Float>(0.5, 0.5, 0.5))
+                maxPoint = max(maxPoint, pos + SIMD3<Float>(0.5, 0.5, 0.5))
+            }
+            print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
             
             // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
             let cubeState = viewModel.cubeState
@@ -536,78 +559,3 @@ extension simd_float4x4 {
                   SIMD4<Float>(t.x, t.y, t.z, 1))
     }
 }
-
-//
-// Minimal Metal shading language stubs (add these to your default .metal file):
-//
-/*
-#include <metal_stdlib>
-using namespace metal;
-
-struct VertexIn {
-    float3 position [[attribute(0)]];
-    float3 normal [[attribute(1)]];
-    
-    // Instance attributes:
-    float4x4 modelMatrix [[attribute(2)]];
-    float3 faceColors[6] [[attribute(6)]];
-};
-
-struct VertexOut {
-    float4 position [[position]];
-    float3 normal;
-    float3 faceColor;
-};
-
-struct Uniforms {
-    float4x4 vpMatrix;
-    float3 lightPos;
-};
-
-vertex VertexOut vertex_main(
-    uint vertexID [[vertex_id]],
-    uint instanceID [[instance_id]],
-    device const VertexIn *vertices [[buffer(0)]],
-    device const Uniforms &uniforms [[buffer(2)]],
-    device const float4x4 *instanceModelMatrices [[buffer(1)]],
-    device const float3 *faceColors [[buffer(1)]]
-) {
-    VertexOut out;
-    // vertices might be fetched from buffer(0) by vertexID
-    // instance model matrix from buffer(1)
-    // face colors from buffer(1) offset after model matrix
-    
-    // For this stub, assuming vertex buffer layout:
-    // position at attribute(0), normal at attribute(1)
-    // modelMatrix at attribute(2..5)
-    // faceColors at attribute(6..11)
-    
-    // Fetch vertex data
-    float3 pos = vertices[vertexID].position;
-    float3 norm = vertices[vertexID].normal;
-    
-    // Compose model matrix for instance
-    // Note: In Metal this is automatic by attributes
-    
-    // Compute world position
-    float4 worldPos = instanceModelMatrices[instanceID] * float4(pos, 1);
-    float4 clipPos = uniforms.vpMatrix * worldPos;
-    
-    out.position = clipPos;
-    out.normal = normalize((instanceModelMatrices[instanceID] * float4(norm, 0)).xyz);
-    
-    // Determine face from vertexID (each 4 vertices per face)
-    uint face = vertexID / 4;
-    out.faceColor = faceColors[instanceID * 6 + face];
-    
-    return out;
-}
-
-fragment half4 fragment_main(VertexOut in [[stage_in]]) {
-    float3 lightDir = normalize(float3(1,1,1));
-    float diff = max(dot(in.normal, lightDir), 0.2);
-    float3 color = in.faceColor * diff + 0.1;
-    return half4(color, 1.0);
-}
-*/
-
