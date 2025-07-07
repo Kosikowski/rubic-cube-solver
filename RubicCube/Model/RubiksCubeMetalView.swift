@@ -1,0 +1,613 @@
+#if os(macOS)
+import CoreVideo
+#endif
+import SwiftUI
+import MetalKit
+import simd
+import Combine
+
+/// ViewModel bridging CubeState and Metal rendering.
+class RubiksCubeViewModel: ObservableObject {
+    @Published var cubeState = CubeState()
+    
+    @Published private(set) var animator = Animator()
+    private var moveQueue = [Move]()
+    
+    #if os(macOS)
+    private var displayLink: CVDisplayLink?
+    private var needsDisplayUpdate = false
+    #else
+    private var displayLink: CADisplayLink?
+    #endif
+    private var lastTimestamp: CFTimeInterval = 0
+    
+    init() {
+        startDisplayLink()
+    }
+    
+    deinit {
+        #if os(macOS)
+        if let displayLink = displayLink {
+            CVDisplayLinkStop(displayLink)
+        }
+        #else
+        displayLink?.invalidate()
+        #endif
+    }
+    
+    /// Enqueue a move to be executed sequentially.
+    func enqueue(move: Move) {
+        moveQueue.append(move)
+    }
+    
+    /// Scramble the cube with random moves
+    func scramble(movesCount: Int = 20) {
+        cubeState.reset()
+        moveQueue.removeAll()
+        for _ in 0..<movesCount {
+            let axis = [Move.Axis.x, .y, .z].randomElement()!
+            let layer = Int.random(in: 0...2)
+            let direction: Move.Direction = Bool.random() ? .clockwise : .counterClockwise
+            enqueue(move: Move(axis: axis, layer: layer, direction: direction))
+        }
+    }
+    
+    /// Solve the cube by resetting the state and clearing moves
+    func solve() {
+        moveQueue.removeAll()
+        cubeState.reset()
+    }
+    
+    private func startDisplayLink() {
+        #if os(macOS)
+        var link: CVDisplayLink?
+        CVDisplayLinkCreateWithActiveCGDisplays(&link)
+        displayLink = link
+        if let displayLink = displayLink {
+            CVDisplayLinkSetOutputCallback(displayLink, { (_, inNow, _, _, _, userInfo) -> CVReturn in
+                let viewModel = Unmanaged<RubiksCubeViewModel>.fromOpaque(userInfo!).takeUnretainedValue()
+                viewModel.cvDisplayLinkFired(time: inNow.pointee)
+                return kCVReturnSuccess
+            }, UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()))
+            CVDisplayLinkStart(displayLink)
+        }
+        #else
+        displayLink = CADisplayLink(target: self, selector: #selector(update))
+        displayLink?.add(to: .main, forMode: .default)
+        #endif
+    }
+    
+    #if os(macOS)
+    private func cvDisplayLinkFired(time: CVTimeStamp) {
+        // Convert CVTimeStamp to time interval
+        let timestamp = Double(time.videoTime) / Double(time.videoTimeScale)
+        DispatchQueue.main.async {
+            self.updateDisplayLink(timestamp: timestamp)
+        }
+    }
+    #endif
+    
+    @objc private func update(link: CADisplayLink) {
+        updateDisplayLink(timestamp: link.timestamp)
+    }
+    
+    private func updateDisplayLink(timestamp: CFTimeInterval) {
+        if lastTimestamp == 0 {
+            lastTimestamp = timestamp
+            return
+        }
+        let deltaTime = timestamp - lastTimestamp
+        lastTimestamp = timestamp
+        
+        if animator.currentMove == nil, !moveQueue.isEmpty {
+            // Start next move
+            if animator.start(move: moveQueue.first!) {
+                moveQueue.removeFirst()
+            }
+        }
+        
+        let animating = animator.update(deltaTime: deltaTime)
+        if !animating, let completedMove = animator.currentMove {
+            // Should never reach here as animator.currentMove is nil when finished
+            // But for safety apply last move
+            cubeState.apply(move: completedMove)
+        }
+        
+        // If finished a move this frame, apply final transform and clear animator
+        if !animating, animator.currentMove == nil {
+            // Apply last move permanently if we still hold one (defensive)
+            if let lastMove = animator.currentMove {
+                cubeState.apply(move: lastMove)
+            }
+        }
+        
+        // If animation finished this frame, apply move to cubeState
+        if !animating && animator.currentMove == nil && !moveQueue.isEmpty {
+            // Start next move next frame
+        }
+        
+        // When animation just finished, apply the move transform permanently
+        if !animating && animator.currentMove == nil {
+            // No current animation running: apply completed move to cubeState last frame
+            // So do nothing here, cubeState was updated after animation ended
+        }
+        
+        // When animation just finished: apply last move permanently
+        if !animating && animator.currentMove == nil && !moveQueue.isEmpty {
+            // Nothing to do here, next move will start next frame
+        }
+        
+        // Publish updates for SwiftUI views to redraw
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
+    }
+}
+
+// MARK: - RubiksCubeMetalView
+
+#if os(macOS)
+import AppKit
+struct RubiksCubeMetalView: NSViewRepresentable {
+    @ObservedObject var viewModel: RubiksCubeViewModel
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(viewModel: viewModel)
+    }
+    
+    func makeNSView(context: Context) -> MTKView {
+        let mtkView = MTKView()
+        mtkView.device = MTLCreateSystemDefaultDevice()
+        mtkView.delegate = context.coordinator
+        mtkView.preferredFramesPerSecond = 60
+        mtkView.framebufferOnly = false
+        mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
+        return mtkView
+    }
+    
+    func updateNSView(_ nsView: MTKView, context: Context) {
+        // ViewModel changes trigger redraw automatically.
+    }
+}
+#else
+import UIKit
+struct RubiksCubeMetalView: UIViewRepresentable {
+    @ObservedObject var viewModel: RubiksCubeViewModel
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(viewModel: viewModel)
+    }
+    
+    func makeUIView(context: Context) -> MTKView {
+        let mtkView = MTKView()
+        mtkView.device = MTLCreateSystemDefaultDevice()
+        mtkView.delegate = context.coordinator
+        mtkView.preferredFramesPerSecond = 60
+        mtkView.framebufferOnly = false
+        mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
+        return mtkView
+    }
+    
+    func updateUIView(_ uiView: MTKView, context: Context) {
+        // ViewModel changes trigger redraw automatically.
+    }
+}
+#endif
+    
+    class Coordinator: NSObject, MTKViewDelegate {
+        let viewModel: RubiksCubeViewModel
+        var pipelineState: MTLRenderPipelineState!
+        var commandQueue: MTLCommandQueue!
+        
+        // Buffers
+        var vertexBuffer: MTLBuffer!
+        var indexBuffer: MTLBuffer!
+        
+        // Cubie instance uniform buffer (transforms + colors)
+        var instanceUniformBuffer: MTLBuffer!
+        
+        // Uniforms buffer for view/projection and lighting
+        var uniformsBuffer: MTLBuffer!
+        
+        // Vertex data for a single cubie (a cube)
+        struct Vertex {
+            var position: SIMD3<Float>
+            var normal: SIMD3<Float>
+        }
+        
+        // Uniforms sent to vertex shader
+        struct Uniforms {
+            var vpMatrix: simd_float4x4
+            var lightPos: SIMD3<Float>
+            var padding: Float = 0
+        }
+        
+        // Per-instance uniform: model matrix + 6 face colors (RGB per face)
+        struct InstanceUniforms {
+            var modelMatrix: simd_float4x4
+            var faceColors: SIMD3<Float>  // We'll pass colors as 6 * float3 consecutively
+        }
+        
+        struct InstanceData {
+            var modelMatrix: simd_float4x4
+            var faceColors: [SIMD3<Float>]  // 6 faces
+        }
+        
+        // We will store modelMatrix + 6 face colors per cubie
+        struct InstanceUniformsPacked {
+            var modelMatrix: simd_float4x4
+            var faceColors: (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)
+        }
+        
+        init(viewModel: RubiksCubeViewModel) {
+            self.viewModel = viewModel
+            super.init()
+            setupMetal()
+            createBuffers()
+        }
+        
+        func setupMetal() {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                fatalError("Metal device not available")
+            }
+            commandQueue = device.makeCommandQueue()
+            do {
+                let library = device.makeDefaultLibrary()
+                let pipelineDescriptor = MTLRenderPipelineDescriptor()
+                pipelineDescriptor.vertexFunction = library?.makeFunction(name: "vertex_main")
+                pipelineDescriptor.fragmentFunction = library?.makeFunction(name: "fragment_main")
+                pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+                pipelineDescriptor.vertexDescriptor = makeVertexDescriptor()
+                pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+            } catch {
+                fatalError("Metal pipeline error: \(error)")
+            }
+        }
+        
+        func makeVertexDescriptor() -> MTLVertexDescriptor {
+            let vertexDescriptor = MTLVertexDescriptor()
+            // Positions
+            vertexDescriptor.attributes[0].format = .float3
+            vertexDescriptor.attributes[0].offset = 0
+            vertexDescriptor.attributes[0].bufferIndex = 0
+            // Normals
+            vertexDescriptor.attributes[1].format = .float3
+            vertexDescriptor.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
+            vertexDescriptor.attributes[1].bufferIndex = 0
+            vertexDescriptor.layouts[0].stride = MemoryLayout<Vertex>.stride
+            vertexDescriptor.layouts[0].stepFunction = .perVertex
+            
+            // Instance attributes: model matrix 4x4 (4 x float4 attributes)
+            // We'll use buffer index 1 for instance data
+            
+            // Model matrix columns as 4 float4 attributes
+            for i in 0..<4 {
+                vertexDescriptor.attributes[2 + i].format = .float4
+                vertexDescriptor.attributes[2 + i].offset = i * MemoryLayout<SIMD4<Float>>.stride
+                vertexDescriptor.attributes[2 + i].bufferIndex = 1
+            }
+            // Face colors (6 x float3) - 6 * 12 bytes = 72 bytes offset after model matrix
+            // We'll pack face colors starting at offset 64 bytes (modelMatrix = 64 bytes)
+            let faceColorsOffset = MemoryLayout<simd_float4x4>.stride
+            for i in 0..<6 {
+                vertexDescriptor.attributes[6 + i].format = .float3
+                vertexDescriptor.attributes[6 + i].offset = faceColorsOffset + i * MemoryLayout<SIMD3<Float>>.stride
+                vertexDescriptor.attributes[6 + i].bufferIndex = 1
+            }
+            vertexDescriptor.layouts[1].stride = faceColorsOffset + 6 * MemoryLayout<SIMD3<Float>>.stride
+            vertexDescriptor.layouts[1].stepFunction = .perInstance
+            
+            return vertexDescriptor
+        }
+        
+        func createBuffers() {
+            let device = commandQueue.device
+            
+            // Cube vertices - unit cube centered at origin, size 1 (each cubie is 1 unit cube)
+            // We'll define 24 vertices (4 per face * 6 faces) to have proper normals.
+            // This allows flat shading per face.
+            
+            let vertices: [Vertex] = [
+                // +X face (Right)
+                Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(1, 0, 0)),
+                Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(1, 0, 0)),
+                Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(1, 0, 0)),
+                Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(1, 0, 0)),
+                
+                // -X face (Left)
+                Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(-1, 0, 0)),
+                Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(-1, 0, 0)),
+                Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(-1, 0, 0)),
+                Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(-1, 0, 0)),
+                
+                // +Y face (Top)
+                Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 1, 0)),
+                Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 1, 0)),
+                Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 1, 0)),
+                Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 1, 0)),
+                
+                // -Y face (Bottom)
+                Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(0, -1, 0)),
+                Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(0, -1, 0)),
+                Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(0, -1, 0)),
+                Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(0, -1, 0)),
+                
+                // +Z face (Front)
+                Vertex(position: SIMD3<Float>(-0.5, -0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+                Vertex(position: SIMD3<Float>(0.5, -0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+                Vertex(position: SIMD3<Float>(0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+                Vertex(position: SIMD3<Float>(-0.5, 0.5, 0.5), normal: SIMD3<Float>(0, 0, 1)),
+                
+                // -Z face (Back)
+                Vertex(position: SIMD3<Float>(0.5, -0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+                Vertex(position: SIMD3<Float>(-0.5, -0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+                Vertex(position: SIMD3<Float>(-0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+                Vertex(position: SIMD3<Float>(0.5, 0.5, -0.5), normal: SIMD3<Float>(0, 0, -1)),
+            ]
+            
+            vertexBuffer = device.makeBuffer(bytes: vertices,
+                                             length: MemoryLayout<Vertex>.stride * vertices.count,
+                                             options: [])
+            
+            // Indices for triangles (6 faces, 2 triangles per face, 3 indices each = 36)
+            // Each face uses 4 vertices in order: 0,1,2,3
+            let indices: [UInt16] = [
+                0, 1, 2, 0, 2, 3,       // +X
+                4, 5, 6, 4, 6, 7,       // -X
+                8, 9, 10, 8, 10, 11,    // +Y
+                12, 13, 14, 12, 14, 15, // -Y
+                16, 17, 18, 16, 18, 19, // +Z
+                20, 21, 22, 20, 22, 23  // -Z
+            ]
+            
+            indexBuffer = device.makeBuffer(bytes: indices,
+                                            length: MemoryLayout<UInt16>.stride * indices.count,
+                                            options: [])
+            
+            // Create instance uniform buffer for 27 cubies
+            instanceUniformBuffer = device.makeBuffer(length: MemoryLayout<simd_float4x4>.stride * 27 + MemoryLayout<SIMD3<Float>>.stride * 6 * 27, options: [])
+            
+            // Uniforms buffer for VP matrix and light
+            uniformsBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.stride, options: [])
+        }
+        
+        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+            // Nothing needed here for now
+        }
+        
+        func draw(in view: MTKView) {
+            guard let drawable = view.currentDrawable,
+                  let descriptor = view.currentRenderPassDescriptor,
+                  let device = view.device,
+                  let commandQueue = commandQueue else { return }
+            
+            let commandBuffer = commandQueue.makeCommandBuffer()
+            guard let encoder = commandBuffer?.makeRenderCommandEncoder(descriptor: descriptor) else {
+                commandBuffer?.commit()
+                return
+            }
+            
+            encoder.setRenderPipelineState(pipelineState)
+            
+            // Setup camera: view-projection matrix
+            let aspect = Float(view.drawableSize.width / view.drawableSize.height)
+            let fov: Float = 65 * (.pi / 180)
+            let near: Float = 0.1
+            let far: Float = 100
+            
+            let projectionMatrix = simd_float4x4(perspectiveFov: fov, aspectRatio: aspect, nearZ: near, farZ: far)
+            
+            // Camera looks at the center of cube at (0,0,0) from a distance (e.g. z=6)
+            let eye = SIMD3<Float>(3, 3, 6)
+            let center = SIMD3<Float>(0, 0, 0)
+            let up = SIMD3<Float>(0, 1, 0)
+            let viewMatrix = simd_float4x4(lookAtEye: eye, center: center, up: up)
+            
+            let vpMatrix = projectionMatrix * viewMatrix
+            
+            // Light position in world space (e.g. same as eye)
+            let lightPos = eye
+            
+            // Upload uniforms
+            var uniforms = Uniforms(vpMatrix: vpMatrix, lightPos: lightPos)
+            memcpy(uniformsBuffer.contents(), &uniforms, MemoryLayout<Uniforms>.stride)
+            encoder.setVertexBuffer(uniformsBuffer, offset: 0, index: 2)
+            
+            // Prepare per-instance uniforms buffer with transforms + face colors
+            // Size per instance = modelMatrix (64 bytes) + 6 * float3 (72 bytes) = 136 bytes
+            // We'll pack face colors consecutively after modelMatrix
+            
+            let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
+            
+            // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
+            let cubeState = viewModel.cubeState
+            let animator = viewModel.animator
+            
+            // Rotation matrix for current move animation (optional)
+            let rotationMatrixOpt = animator.rotationMatrix()
+            let rotatingAxis = animator.currentAxis
+            let rotatingLayer = animator.currentLayer
+            
+            for i in 0..<27 {
+                let pos = CubeState.cubePositions[i]
+                let baseOffset = i * 136
+                
+                // Determine if this cubie is on the rotating layer:
+                var modelMatrix = cubeState.transforms[i]
+                
+                if let rotationMatrix = rotationMatrixOpt {
+                    // Check if cubie is in rotating layer
+                    let layerIndex: Int
+                    switch rotatingAxis {
+                    case .x: layerIndex = pos.x
+                    case .y: layerIndex = pos.y
+                    case .z: layerIndex = pos.z
+                    }
+                    if layerIndex == rotatingLayer {
+                        // Apply animation rotation around axis center
+                        // Translate cubie center to origin (cube center at 0,0,0), rotate, translate back
+                        let translationToCenter = simd_float4x4(translation: -SIMD3<Float>(0,0,0))
+                        let translationBack = simd_float4x4(translation: SIMD3<Float>(0,0,0))
+                        // We can just multiply rotation * modelMatrix because modelMatrix already includes position offset
+                        modelMatrix = rotationMatrix * modelMatrix
+                    }
+                }
+                
+                // Write modelMatrix (float4x4)
+                let modelMatrixPtr = instanceBufferRawPointer.advanced(by: baseOffset).assumingMemoryBound(to: simd_float4x4.self)
+                modelMatrixPtr.pointee = modelMatrix
+                
+                // Write face colors as 6 float3 sequentially after modelMatrix
+                let colorsStart = baseOffset + MemoryLayout<simd_float4x4>.stride
+                let colorsPtr = instanceBufferRawPointer.advanced(by: colorsStart).assumingMemoryBound(to: SIMD3<Float>.self)
+                let colors = cubeState.faceColors[i]
+                for f in 0..<6 {
+                    colorsPtr[f] = colors[f]
+                }
+            }
+            
+            encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(instanceUniformBuffer, offset: 0, index: 1)
+            // Removed encoder.setIndexBuffer(indexBuffer, offset: 0, indexType: .uint16)
+            
+            // Draw instanced geometry: 27 cubies, 36 indices each
+            encoder.drawIndexedPrimitives(type: .triangle,
+                                          indexCount: 36,
+                                          indexType: MTLIndexType.uint16,
+                                          indexBuffer: indexBuffer,
+                                          indexBufferOffset: 0,
+                                          instanceCount: 27)
+            
+            encoder.endEncoding()
+            commandBuffer?.present(drawable)
+            commandBuffer?.commit()
+        }
+    }
+
+
+// MARK: - simd_float4x4 Extensions for common transforms
+
+extension simd_float4x4 {
+    init(translation t: SIMD3<Float>) {
+        self = matrix_identity_float4x4
+        columns.3 = SIMD4<Float>(t.x, t.y, t.z, 1)
+    }
+    
+    init(rotationAbout axis: SIMD3<Float>, angle: Float) {
+        let a = normalize(axis)
+        let x = a.x, y = a.y, z = a.z
+        let c = cos(angle)
+        let s = sin(angle)
+        let mc = 1 - c
+        
+        self.init(SIMD4<Float>(c + mc*x*x,      mc*x*y + z*s,    mc*x*z - y*s, 0),
+                  SIMD4<Float>(mc*x*y - z*s,    c + mc*y*y,      mc*y*z + x*s, 0),
+                  SIMD4<Float>(mc*x*z + y*s,    mc*y*z - x*s,    c + mc*z*z,   0),
+                  SIMD4<Float>(0,               0,               0,            1))
+    }
+    
+    init(perspectiveFov fovY: Float, aspectRatio: Float, nearZ: Float, farZ: Float) {
+        let yScale = 1 / tan(fovY * 0.5)
+        let xScale = yScale / aspectRatio
+        let zRange = farZ - nearZ
+        let zScale = -(farZ + nearZ) / zRange
+        let wzScale = -2 * farZ * nearZ / zRange
+        
+        self.init(SIMD4<Float>(xScale, 0, 0, 0),
+                  SIMD4<Float>(0, yScale, 0, 0),
+                  SIMD4<Float>(0, 0, zScale, -1),
+                  SIMD4<Float>(0, 0, wzScale, 0))
+    }
+    
+    init(lookAtEye eye: SIMD3<Float>, center: SIMD3<Float>, up: SIMD3<Float>) {
+        let z = simd_normalize(eye - center)
+        let x = simd_normalize(simd_cross(up, z))
+        let y = simd_cross(z, x)
+        
+        let t = SIMD3<Float>(
+            -simd_dot(x, eye),
+            -simd_dot(y, eye),
+            -simd_dot(z, eye)
+        )
+        
+        self.init(SIMD4<Float>(x.x, y.x, z.x, 0),
+                  SIMD4<Float>(x.y, y.y, z.y, 0),
+                  SIMD4<Float>(x.z, y.z, z.z, 0),
+                  SIMD4<Float>(t.x, t.y, t.z, 1))
+    }
+}
+
+//
+// Minimal Metal shading language stubs (add these to your default .metal file):
+//
+/*
+#include <metal_stdlib>
+using namespace metal;
+
+struct VertexIn {
+    float3 position [[attribute(0)]];
+    float3 normal [[attribute(1)]];
+    
+    // Instance attributes:
+    float4x4 modelMatrix [[attribute(2)]];
+    float3 faceColors[6] [[attribute(6)]];
+};
+
+struct VertexOut {
+    float4 position [[position]];
+    float3 normal;
+    float3 faceColor;
+};
+
+struct Uniforms {
+    float4x4 vpMatrix;
+    float3 lightPos;
+};
+
+vertex VertexOut vertex_main(
+    uint vertexID [[vertex_id]],
+    uint instanceID [[instance_id]],
+    device const VertexIn *vertices [[buffer(0)]],
+    device const Uniforms &uniforms [[buffer(2)]],
+    device const float4x4 *instanceModelMatrices [[buffer(1)]],
+    device const float3 *faceColors [[buffer(1)]]
+) {
+    VertexOut out;
+    // vertices might be fetched from buffer(0) by vertexID
+    // instance model matrix from buffer(1)
+    // face colors from buffer(1) offset after model matrix
+    
+    // For this stub, assuming vertex buffer layout:
+    // position at attribute(0), normal at attribute(1)
+    // modelMatrix at attribute(2..5)
+    // faceColors at attribute(6..11)
+    
+    // Fetch vertex data
+    float3 pos = vertices[vertexID].position;
+    float3 norm = vertices[vertexID].normal;
+    
+    // Compose model matrix for instance
+    // Note: In Metal this is automatic by attributes
+    
+    // Compute world position
+    float4 worldPos = instanceModelMatrices[instanceID] * float4(pos, 1);
+    float4 clipPos = uniforms.vpMatrix * worldPos;
+    
+    out.position = clipPos;
+    out.normal = normalize((instanceModelMatrices[instanceID] * float4(norm, 0)).xyz);
+    
+    // Determine face from vertexID (each 4 vertices per face)
+    uint face = vertexID / 4;
+    out.faceColor = faceColors[instanceID * 6 + face];
+    
+    return out;
+}
+
+fragment half4 fragment_main(VertexOut in [[stage_in]]) {
+    float3 lightDir = normalize(float3(1,1,1));
+    float diff = max(dot(in.normal, lightDir), 0.2);
+    float3 color = in.faceColor * diff + 0.1;
+    return half4(color, 1.0);
+}
+*/
+
