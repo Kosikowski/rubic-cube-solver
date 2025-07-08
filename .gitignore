@@ -1,1 +1,19 @@
-Project/RubicCube.xcodeproj/xcuserdata/mateusz.kosikowski.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist
+# Xcode
+.DS_Store
+build/
+DerivedData/
+
+# User-specific settings
+**/*.xcodeproj/xcuserdata/
+**/*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xcbkptlist
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# Swift Package Manager
+.swiftpm/

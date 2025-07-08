@@ -35,8 +35,8 @@ class RubiksCubeViewModel: ObservableObject {
 
     // MARK: state
 
-    var cubeState = CubeState()
-    private(set) var animator = Animator()
+    var cubeState = RubicCubeSolver()
+    private(set) var animator: Animator = CubeAnimator()
 
     private var moveQueue = [Move]()
     private var lastTimestamp: CFTimeInterval = 0

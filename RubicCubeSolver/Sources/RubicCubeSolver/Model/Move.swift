@@ -14,9 +14,9 @@ infix operator <~>: AdditionPrecedence
 
 /// Model representing a single move on a Rubik's Cube.
 /// Encapsulates the axis, layer, direction, and animation details of the move.
-struct Move: Equatable {
+public struct Move: Equatable {
     /// Axis of rotation for the move.
-    enum Axis {
+    public enum Axis {
         case x, y, z
     }
 

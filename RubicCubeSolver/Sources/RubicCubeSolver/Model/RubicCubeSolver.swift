@@ -19,7 +19,7 @@ extension Move.Axis {
 }
 
 /// Represents the state of the Rubik's Cube.
-class CubeState {
+class RubicCubeSolver {
     var enablePrints = false
     /// 3x3x3 array of cubie transforms (local to cube center)
     /// Each cubie transform is simd_float4x4
@@ -51,7 +51,7 @@ class CubeState {
     /// Resets cube transforms and face colors to solved state.
     func reset() {
         for i in 0 ..< 27 {
-            let pos = CubeState.cubePositions[i]
+            let pos = RubicCubeSolver.cubePositions[i]
             transforms[i] = simd_float4x4(translation: SIMD3<Float>(
                 Float(pos.x) - 1,
                 Float(pos.y) - 1,
@@ -87,7 +87,7 @@ class CubeState {
         if enablePrints {
             print("Before move: \(move)")
             for i in 0 ..< 27 {
-                let pos = CubeState.cubePositions[i]
+                let pos = RubicCubeSolver.cubePositions[i]
                 let layerIndex: Int
                 switch move.axis {
                 case .x: layerIndex = pos.x
@@ -113,7 +113,7 @@ class CubeState {
         var newFaceColors = faceColors
 
         for i in 0 ..< 27 {
-            let pos = CubeState.cubePositions[i]
+            let pos = RubicCubeSolver.cubePositions[i]
             let layerIndex: Int
             switch move.axis {
             case .x: layerIndex = pos.x
@@ -133,7 +133,7 @@ class CubeState {
                 let roundedPos = SIMD3<Int>(Int(round(rotatedPos.x)), Int(round(rotatedPos.y)), Int(round(rotatedPos.z)))
 
                 // Find index of cubie at rotated position
-                if let destIndex = CubeState.cubePositions.firstIndex(where: { $0 == roundedPos }) {
+                if let destIndex = RubicCubeSolver.cubePositions.firstIndex(where: { $0 == roundedPos }) {
                     // Rotate transform accordingly
                     let oldTransform = transforms[i]
                     // Remove translation, apply rotation, then translate back
@@ -153,7 +153,7 @@ class CubeState {
         if enablePrints {
             print("After move: \(move)")
             for i in 0 ..< 27 {
-                let pos = CubeState.cubePositions[i]
+                let pos = RubicCubeSolver.cubePositions[i]
                 let layerIndex: Int
                 switch move.axis {
                 case .x: layerIndex = pos.x
@@ -171,7 +171,7 @@ class CubeState {
 
         if enablePrints {
             for i in 0 ..< 27 {
-                let pos = CubeState.cubePositions[i]
+                let pos = RubicCubeSolver.cubePositions[i]
                 let colors = faceColors[i]
                 if pos.x == 2, colors[0] != SIMD3<Float>(1, 0, 0), colors[0] != SIMD3<Float>(0, 0, 0) {
                     print("Invalid +X color at \(pos): \(colors[0])")

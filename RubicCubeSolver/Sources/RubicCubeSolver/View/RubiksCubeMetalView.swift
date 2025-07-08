@@ -422,7 +422,7 @@ class Coordinator: NSObject, MTKViewDelegate {
         let rotatingLayer = animator.currentLayer
 
         for i in 0 ..< 27 {
-            let pos = CubeState.cubePositions[i]
+            let pos = RubicCubeSolver.cubePositions[i]
             /// fixe for buffer
             let baseOffset = i * instanceStride // (MemoryLayout<simd_float4x4>.stride + MemoryLayout<SIMD3<Float>>.stride * 6)
 
