@@ -265,7 +265,7 @@ class Coordinator: NSObject, MTKViewDelegate {
         let faceColorsOffset = MemoryLayout<simd_float4x4>.stride
         for i in 0 ..< 6 {
             vertexDescriptor.attributes[6 + i].format = .float4 // 16 bytes
-            vertexDescriptor.attributes[6 + i].offset = 64 + i * 16 // not 12
+            vertexDescriptor.attributes[6 + i].offset = faceColorsOffset + i * 16
             vertexDescriptor.attributes[6 + i].bufferIndex = 1
         }
         vertexDescriptor.layouts[1].stride = instanceStride // faceColorsOffset + 6 * MemoryLayout<SIMD3<Float>>.stride
@@ -411,6 +411,8 @@ class Coordinator: NSObject, MTKViewDelegate {
         // Size per instance = modelMatrix (64 bytes) + 6 * float3 (72 bytes) = 136 bytes
         // We'll pack face colors consecutively after modelMatrix
 
+        let faceColorsOffset = MemoryLayout<simd_float4x4>.stride
+
         let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
 
         // Compute animated transforms for all cubies via Animator abstraction
@@ -424,7 +426,7 @@ class Coordinator: NSObject, MTKViewDelegate {
             modelMatrixPtr.pointee = modelMatrix
 
             // TODO: Face colors could also be fetched via an abstraction if ever needed
-            let coloursStart = baseOffset + MemoryLayout<simd_float4x4>.stride
+            let coloursStart = baseOffset + faceColorsOffset
             let coloursPtr = instanceBufferRawPointer
                 .advanced(by: coloursStart)
                 .assumingMemoryBound(to: SIMD4<Float>.self)
