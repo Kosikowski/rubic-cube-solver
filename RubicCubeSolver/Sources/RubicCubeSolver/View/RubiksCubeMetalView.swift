@@ -392,74 +392,24 @@ class Coordinator: NSObject, MTKViewDelegate {
 
         let instanceBufferRawPointer = UnsafeMutableRawPointer(instanceUniformBuffer.contents())
 
-        // Print first 5 cubie transforms
-//        print("First 5 cubie transforms:")
-//        for idx in 0..<5 {
-//            print(viewModel.cubeState.transforms[idx])
-//        }
-
-        // Print camera and model bounding info
-//        print("Camera eye position: \(eye)")
-        var minPoint = SIMD3<Float>(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
-        var maxPoint = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
-
+        // Compute animated transforms for all cubies via Animator abstraction
+        let cubieTransforms = viewModel.animator.cubieTransforms(for: viewModel.solver)
         for i in 0 ..< 27 {
-            let modelMatrix = viewModel.solver.cube.transforms[i]
-            // Each cubie is a unit cube centered at its transform's translation.
-            let pos = SIMD3<Float>(modelMatrix.columns.3.x, modelMatrix.columns.3.y, modelMatrix.columns.3.z)
-            minPoint = min(minPoint, pos - SIMD3<Float>(0.5, 0.5, 0.5))
-            maxPoint = max(maxPoint, pos + SIMD3<Float>(0.5, 0.5, 0.5))
-        }
-//        print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
+            let baseOffset = i * instanceStride
 
-        // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
-        let cubeState = viewModel.solver
-        let animator = viewModel.animator
-
-        // Rotation matrix for current move animation (optional)
-        let rotationMatrixOpt = animator.rotationMatrix()
-        let rotatingAxis = animator.currentAxis
-        let rotatingLayer = animator.currentLayer
-
-        for i in 0 ..< 27 {
-            let pos = Cube.cubePositions[i]
-            /// fixe for buffer
-            let baseOffset = i * instanceStride // (MemoryLayout<simd_float4x4>.stride + MemoryLayout<SIMD3<Float>>.stride * 6)
-
-            // Determine if this cubie is on the rotating layer:
-            var modelMatrix = cubeState.cube.transforms[i]
-
-            if let rotationMatrix = rotationMatrixOpt {
-                // Check if cubie is in rotating layer
-                let layerIndex: Int
-                switch rotatingAxis {
-                case .x: layerIndex = pos.x
-                case .y: layerIndex = pos.y
-                case .z: layerIndex = pos.z
-                }
-                if layerIndex == rotatingLayer {
-                    // Apply animation rotation around axis center
-                    // Translate cubie center to origin (cube center at 0,0,0), rotate, translate back
-//                    let translationToCenter = simd_float4x4(translation: -SIMD3<Float>(0,0,0))
-//                    let translationBack = simd_float4x4(translation: SIMD3<Float>(0,0,0))
-                    // We can just multiply rotation * modelMatrix because modelMatrix already includes position offset
-                    modelMatrix = rotationMatrix * modelMatrix
-                }
-            }
-
-            // Write modelMatrix (float4x4)
+            // Use animator-provided transform
+            let modelMatrix = cubieTransforms[i]
             let modelMatrixPtr = instanceBufferRawPointer.advanced(by: baseOffset).assumingMemoryBound(to: simd_float4x4.self)
             modelMatrixPtr.pointee = modelMatrix
 
-            // Write face colors as 6 float3 sequentially after modelMatrix
+            // TODO: Face colors could also be fetched via an abstraction if ever needed
             let coloursStart = baseOffset + MemoryLayout<simd_float4x4>.stride
             let coloursPtr = instanceBufferRawPointer
                 .advanced(by: coloursStart)
                 .assumingMemoryBound(to: SIMD4<Float>.self)
-
             for f in 0 ..< 6 {
-                let c = cubeState.cube.faceColors[i][f] // your SIMD3<Float>
-                coloursPtr[f] = SIMD4<Float>(c, 0) // pad with 0
+                let c = viewModel.solver.cube.faceColors[i][f]
+                coloursPtr[f] = SIMD4<Float>(c, 0)
             }
         }
 
