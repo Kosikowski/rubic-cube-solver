@@ -1,5 +1,5 @@
 //
-//  simd_helpers.swift
+//  simd_extensions.swift
 //  RubicCube
 //
 //  Created by Mateusz Kosikowski on 08/07/2025.

@@ -7,8 +7,6 @@
 import Foundation
 import simd
 
-
-
 /// Animator class to smoothly animate moves on the cube.
 final class CubeAnimator: Animator {
     private(set) var currentMove: Move?
