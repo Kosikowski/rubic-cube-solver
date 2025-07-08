@@ -11,6 +11,8 @@ import MetalKit
 import simd
 import SwiftUI
 
+let numberOfCubiesDisplayed = 27
+
 #if os(macOS)
     import AppKit // For NSView and displayLink
 #endif
@@ -210,6 +212,16 @@ class Coordinator: NSObject, MTKViewDelegate {
             pipelineDescriptor.vertexFunction = library.makeFunction(name: "vertex_main")
             pipelineDescriptor.fragmentFunction = library.makeFunction(name: "fragment_main")
             pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+
+            let colorAttachment = pipelineDescriptor.colorAttachments[0]
+            colorAttachment?.isBlendingEnabled = true
+            colorAttachment?.rgbBlendOperation = .add
+            colorAttachment?.alphaBlendOperation = .add
+            colorAttachment?.sourceRGBBlendFactor = .sourceAlpha
+            colorAttachment?.sourceAlphaBlendFactor = .sourceAlpha
+            colorAttachment?.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            colorAttachment?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+
             pipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
             pipelineDescriptor.vertexDescriptor = makeVertexDescriptor()
             pipelineDescriptor.isRasterizationEnabled = true
@@ -432,7 +444,7 @@ class Coordinator: NSObject, MTKViewDelegate {
                                       indexType: MTLIndexType.uint16,
                                       indexBuffer: indexBuffer,
                                       indexBufferOffset: 0,
-                                      instanceCount: 27)
+                                      instanceCount: numberOfCubiesDisplayed)
 
         encoder.endEncoding()
         commandBuffer?.present(drawable)

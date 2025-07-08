@@ -96,6 +96,6 @@ fragment half4 fragment_main(VertexOut in [[stage_in]]) {
     // Combine the diffuse color with a small ambient term (0.1)
     float3 color = displayColor * diff + 0.1;
 
-    // Return the final color with full opacity
-    return half4(color.r, color.g, color.b, 1.0);
+    // Return the final color with half opacity
+    return half4(color.r, color.g, color.b, 0.5);
 }

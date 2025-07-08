@@ -21,17 +21,17 @@ struct Cubie {
 /// Represents the 3D state of a Rubik's Cube, including cubie transforms and face colors.
 struct Cube {
     /// The 27 cubies in the cube
-    var cubies: [Cubie] // always 27
+    var cubies: RotatableGrid3D<Cubie>! 
 
     /// Legacy compatibility: 3x3x3 array of cubie transforms (local to cube center)
     /// Each cubie transform is a simd_float4x4 matrix representing
     /// the cubie's position and orientation relative to the cube center.
-    var transforms: [simd_float4x4] { cubies.map { $0.transform } }
+    var transforms: [simd_float4x4] { cubies.elements.map { $0.transform } }
 
     /// Legacy compatibility: Colors for each cubie face (6 faces per cubie), 27 cubies total
     /// Each face color is a simd_float3 RGB vector (values from 0 to 1).
     /// The order of faces is [+X, -X, +Y, -Y, +Z, -Z].
-    var faceColors: [[SIMD3<Float>]] { cubies.map { $0.faceColors } }
+    var faceColors: [[SIMD3<Float>]] { cubies.elements.map { $0.faceColors } }
 
     /// Position offsets for each cubie (centered at 0,0,0)
     /// Represents the fixed ordering and positions of the 27 cubies in the cube.
@@ -47,17 +47,20 @@ struct Cube {
         return result
     }()
 
+    let size: Int
+    var totalCubies: Int { size * size * size }
     /// Initializes the Cube with default identity transforms and empty face colors,
     /// then resets to the solved state.
-    init() {
-        cubies = []
+    init(size: Int = 3) {
+        self.size = size
+        assert(size == 3, "Support for Cube size \(size)x\(size)x\(size) is not implemented.")
         reset()
     }
 
     /// Resets cube transforms and face colors to the solved state.
     mutating func reset() {
         var newCubies = [Cubie]()
-        for i in 0 ..< 27 {
+        for i in 0 ..< totalCubies {
             let pos = Cube.cubePositions[i]
             let transform = simd_float4x4(translation: SIMD3<Float>(
                 Float(pos.x) - 1,
@@ -92,6 +95,6 @@ struct Cube {
             )
             newCubies.append(cubie)
         }
-        cubies = newCubies
+        cubies = RotatableGrid3D(newCubies)
     }
 }
