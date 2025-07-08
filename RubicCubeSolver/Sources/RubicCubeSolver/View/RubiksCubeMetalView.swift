@@ -6,6 +6,7 @@
 //
 
 import Combine
+import class Foundation.Bundle
 import MetalKit
 import simd
 import SwiftUI
@@ -186,10 +187,19 @@ class Coordinator: NSObject, MTKViewDelegate {
         }
         commandQueue = device.makeCommandQueue()
         do {
-            let library = device.makeDefaultLibrary()
+            #if SWIFT_PACKAGE
+                let library: MTLLibrary
+                if let url = Bundle.module.url(forResource: "default", withExtension: "metallib") {
+                    library = try device.makeLibrary(URL: url)
+                } else {
+                    library = try device.makeDefaultLibrary(bundle: .main)
+                }
+            #else
+                let library = device.makeDefaultLibrary()
+            #endif
             let pipelineDescriptor = MTLRenderPipelineDescriptor()
-            pipelineDescriptor.vertexFunction = library?.makeFunction(name: "vertex_main")
-            pipelineDescriptor.fragmentFunction = library?.makeFunction(name: "fragment_main")
+            pipelineDescriptor.vertexFunction = library.makeFunction(name: "vertex_main")
+            pipelineDescriptor.fragmentFunction = library.makeFunction(name: "fragment_main")
             pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
             pipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
             pipelineDescriptor.vertexDescriptor = makeVertexDescriptor()
