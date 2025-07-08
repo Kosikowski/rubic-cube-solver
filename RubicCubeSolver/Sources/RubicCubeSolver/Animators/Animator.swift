@@ -4,14 +4,15 @@
 //
 //  Created by Mateusz Kosikowski on 07/07/2025.
 //
-import simd
 import Foundation
+import simd
+
 /// Animator class to smoothly animate moves on the cube.
 class Animator {
-    private(set) var currentMove: Move? = nil
+    private(set) var currentMove: Move?
     private var elapsed: TimeInterval = 0
     private var isAnimating = false
-    
+
     /// Rotation progress in radians for current move [0 .. ±π/2]
     private(set) var currentAngle: Float = 0
 
@@ -20,16 +21,16 @@ class Animator {
         guard isAnimating, let move = currentMove else { return 0 }
         return min(Float(elapsed / move.duration), 1)
     }
-    
+
     /// Current move layer index
     private(set) var currentLayer: Int = 0
-    
+
     /// Current move axis
     private(set) var currentAxis: Move.Axis = .x
-    
+
     /// Current move direction (1 or -1)
     private(set) var currentDirection: Float = 1
-    
+
     /// Start a new move animation if none is running
     func start(move: Move) -> Bool {
         guard !isAnimating else { return false }
@@ -42,7 +43,7 @@ class Animator {
         isAnimating = true
         return true
     }
-    
+
     /// Update animation progress by deltaTime seconds
     /// Returns the move that just finished, or nil if animation is ongoing or no animation is running
     func update(deltaTime: TimeInterval) -> Move? {
@@ -60,7 +61,7 @@ class Animator {
         }
         return nil
     }
-    
+
     /// Returns the current transform for the cubes in the rotating layer
     /// angle is Current angle in radians for animation
     /// axis is rotation axis
@@ -68,10 +69,9 @@ class Animator {
         guard isAnimating else { return nil }
         let angle = currentAngle
         switch currentAxis {
-        case .x: return simd_float4x4(rotationAbout: SIMD3<Float>(1,0,0), angle: angle)
-        case .y: return simd_float4x4(rotationAbout: SIMD3<Float>(0,1,0), angle: angle)
-        case .z: return simd_float4x4(rotationAbout: SIMD3<Float>(0,0,1), angle: angle)
+        case .x: return simd_float4x4(rotationAbout: SIMD3<Float>(1, 0, 0), angle: angle)
+        case .y: return simd_float4x4(rotationAbout: SIMD3<Float>(0, 1, 0), angle: angle)
+        case .z: return simd_float4x4(rotationAbout: SIMD3<Float>(0, 0, 1), angle: angle)
         }
     }
 }
-

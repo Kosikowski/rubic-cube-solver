@@ -5,8 +5,8 @@
 //  Created by Mateusz Kosikowski on 05/07/2025.
 //
 
-import SwiftUI
 import RubicCubeSolver
+import SwiftUI
 
 @main
 struct RubicCubeApp: App {
