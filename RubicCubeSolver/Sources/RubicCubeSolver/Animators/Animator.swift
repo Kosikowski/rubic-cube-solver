@@ -7,7 +7,6 @@
 import Foundation
 import simd
 
-
 protocol Animator {
     func start(move: Move) -> Bool
     func update(deltaTime: TimeInterval) -> Move?

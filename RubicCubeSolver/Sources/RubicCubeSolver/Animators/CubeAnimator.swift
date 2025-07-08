@@ -80,13 +80,13 @@ final class CubeAnimator: Animator {
 extension CubeAnimator {
     /// Returns all 27 cubie transforms, applying rotation animation to the active layer if animating.
     func cubieTransforms(for solver: RubicCubeSolver) -> [simd_float4x4] {
-        guard let rotationMatrix = self.rotationMatrix() else {
+        guard let rotationMatrix = rotationMatrix() else {
             return solver.cube.transforms
         }
         var transforms = solver.cube.transforms
-        let axis = self.currentAxis
-        let layer = self.currentLayer
-        for i in 0..<27 {
+        let axis = currentAxis
+        let layer = currentLayer
+        for i in 0 ..< 27 {
             let pos = Cube.cubePositions[i]
             let layerIndex: Int
             switch axis {

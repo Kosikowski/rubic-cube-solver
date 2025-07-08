@@ -83,7 +83,7 @@ struct RubiksCubeMetalView: View {
     }
 #else
 
-    // iOS / tvOS version unchanged
+    // iOS / tvOS version unchanged except for added pan gesture recognizer
     struct MetalContainer: UIViewRepresentable {
         @ObservedObject var viewModel: RubiksCubeViewModel
 
@@ -99,6 +99,10 @@ struct RubiksCubeMetalView: View {
             mtkView.framebufferOnly = false
             mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
             mtkView.depthStencilPixelFormat = .depth32Float
+
+            // Add pan gesture recognizer for camera orbit
+            let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePanGesture(_:)))
+            mtkView.addGestureRecognizer(panGesture)
 
             // Start the display link on iOS
             viewModel.startDisplayLink(on: mtkView)
@@ -173,6 +177,11 @@ class Coordinator: NSObject, MTKViewDelegate {
     var isDraggingCamera: Bool = false
     let instanceStride = MemoryLayout<simd_float4x4>.stride // 64
         + MemoryLayout<SIMD4<Float>>.stride * 6
+
+    // --- Added iOS/tvOS pan gesture support for camera orbit ---
+    #if !os(macOS)
+        var lastPanLocation: CGPoint = .zero
+    #endif
 
     init(viewModel: RubiksCubeViewModel) {
         self.viewModel = viewModel
@@ -465,6 +474,42 @@ class Coordinator: NSObject, MTKViewDelegate {
 
         func mtkViewMouseUp(_: NSEvent) {
             isDraggingCamera = false
+        }
+    #else
+        // iOS / tvOS pan gesture handler for camera orbit
+        @MainActor
+        @objc func handlePanGesture(_ gestureRecognizer: UIPanGestureRecognizer) {
+            guard let mtkView = gestureRecognizer.view as? MTKView else { return }
+
+            switch gestureRecognizer.state {
+            case .began:
+                isDraggingCamera = true
+                lastPanLocation = gestureRecognizer.location(in: mtkView)
+            case .changed:
+                guard isDraggingCamera else { return }
+                let currentLocation = gestureRecognizer.location(in: mtkView)
+                let deltaX = Float(currentLocation.x - lastPanLocation.x)
+                let deltaY = Float(currentLocation.y - lastPanLocation.y)
+
+                // Adjust azimuth and elevation based on pan movement
+                let sensitivity: Float = 0.005
+                cameraAzimuth -= deltaX * sensitivity
+                cameraElevation += deltaY * sensitivity
+
+                // Clamp elevation between -85 and +85 degrees (in radians)
+                let maxElevation: Float = (.pi / 2) * 0.94
+                let minElevation: Float = -maxElevation
+                cameraElevation = min(max(cameraElevation, minElevation), maxElevation)
+
+                lastPanLocation = currentLocation
+
+                // Request redraw
+                mtkView.setNeedsDisplay(mtkView.bounds)
+            case .ended, .cancelled, .failed:
+                isDraggingCamera = false
+            default:
+                break
+            }
         }
     #endif
 }

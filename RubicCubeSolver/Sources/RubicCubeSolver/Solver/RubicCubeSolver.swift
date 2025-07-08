@@ -8,8 +8,6 @@ import Foundation
 import simd
 import SwiftUI
 
-
-
 extension Move.Axis {
     var index: Int {
         switch self {
@@ -123,8 +121,10 @@ class RubicCubeSolver {
         }
 
         // Commit the updated transforms and face colors back to the cube state
-        cube.transforms = newTransforms
-        cube.faceColors = newFaceColors
+        for i in 0 ..< 27 {
+            cube.cubies[i].transform = newTransforms[i]
+            cube.cubies[i].faceColors = newFaceColors[i]
+        }
 
         if enablePrints {
             // Example validation print for +X face colors on the right layer
