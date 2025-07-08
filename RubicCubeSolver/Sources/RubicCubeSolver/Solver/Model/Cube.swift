@@ -21,7 +21,7 @@ struct Cubie {
 /// Represents the 3D state of a Rubik's Cube, including cubie transforms and face colors.
 struct Cube {
     /// The 27 cubies in the cube
-    var cubies: RotatableGrid3D<Cubie>! 
+    var cubies: RotatableGrid3D<Cubie>!
 
     /// Legacy compatibility: 3x3x3 array of cubie transforms (local to cube center)
     /// Each cubie transform is a simd_float4x4 matrix representing

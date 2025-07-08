@@ -94,12 +94,7 @@ class RubicCubeSolver {
                     let invTranslation = simd_float4x4(translation: SIMD3<Float>(Float(roundedPos.x) - 1, Float(roundedPos.y) - 1, Float(roundedPos.z) - 1))
                     newTransforms[destIndex] = invTranslation * rotation * translation * cube.transforms[i]
 
-                    // Rotate face colors for the cubie (simulate sticker rotation)
-                    // Use the same signed direction as the move
-                    let dirForColors: Move.Direction = (signed > 0 ? .clockwise : .counterClockwise)
-                    newFaceColors[destIndex] = rotateFaceColors(cube.faceColors[i],
-                                                                axis: move.axis,
-                                                                direction: dirForColors)
+                    newFaceColors[destIndex] = cube.faceColors[i]
                 }
             }
         }
@@ -137,66 +132,6 @@ class RubicCubeSolver {
                 // Additional face checks can be added here similarly
             }
         }
-    }
-
-    /// Rotates the 6 face colors of a cubie according to the axis and direction of rotation.
-    private func rotateFaceColors(_ colors: [SIMD3<Float>], axis: Move.Axis, direction: Move.Direction) -> [SIMD3<Float>] {
-        var newColors = Array(repeating: SIMD3<Float>(0, 0, 0), count: 6)
-        switch axis {
-        case .x:
-            if direction == .clockwise {
-                // For R move: +Y → +Z, +Z → -Y, -Y → -Z, -Z → +Y
-                newColors[0] = colors[0] // +X stays
-                newColors[1] = colors[1] // -X stays
-                newColors[2] = colors[4] // +Y ← +Z
-                newColors[3] = colors[5] // -Y ← -Z
-                newColors[4] = colors[3] // +Z ← -Y
-                newColors[5] = colors[2] // -Z ← +Y
-            } else {
-                // For L move: +Y → -Z, -Z → -Y, -Y → +Z, +Z → +Y
-                newColors[0] = colors[0]
-                newColors[1] = colors[1]
-                newColors[2] = colors[5] // +Y ← -Z
-                newColors[3] = colors[4] // -Y ← +Z
-                newColors[4] = colors[2] // +Z ← +Y
-                newColors[5] = colors[3] // -Z ← -Y
-            }
-        case .y:
-            if direction == .clockwise {
-                // For U move: +X → -Z, -Z → -X, -X → +Z, +Z → +X
-                newColors[0] = colors[5] // +X ← -Z
-                newColors[1] = colors[4] // -X ← +Z
-                newColors[2] = colors[2] // +Y stays
-                newColors[3] = colors[3] // -Y stays
-                newColors[4] = colors[0] // +Z ← +X
-                newColors[5] = colors[1] // -Z ← -X
-            } else {
-                newColors[0] = colors[4]
-                newColors[1] = colors[5]
-                newColors[2] = colors[2]
-                newColors[3] = colors[3]
-                newColors[4] = colors[1]
-                newColors[5] = colors[0]
-            }
-        case .z:
-            if direction == .clockwise {
-                // For F move: +X → +Y, +Y → -X, -X → -Y, -Y → +X
-                newColors[0] = colors[2] // +X ← +Y
-                newColors[1] = colors[3] // -X ← -Y
-                newColors[2] = colors[1] // +Y ← -X
-                newColors[3] = colors[0] // -Y ← +X
-                newColors[4] = colors[4] // +Z stays
-                newColors[5] = colors[5] // -Z stays
-            } else {
-                newColors[0] = colors[3]
-                newColors[1] = colors[2]
-                newColors[2] = colors[0]
-                newColors[3] = colors[1]
-                newColors[4] = colors[4]
-                newColors[5] = colors[5]
-            }
-        }
-        return newColors
     }
 
     /// Returns axis unit vector for Move.Axis

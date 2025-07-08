@@ -82,7 +82,7 @@ fragment half4 fragment_main(VertexOut in [[stage_in]]) {
 
     // Calculate diffuse lighting factor using Lambert's cosine law
     // Clamp to a minimum of 0.2 to avoid completely dark areas
-    float diff = max(dot(in.normal, lightDir), 0.2);
+    float diff = max(dot(in.normal, lightDir), 0.1);
 
     // Start with the interpolated face color
     float3 displayColor = in.faceColor;
@@ -94,8 +94,8 @@ fragment half4 fragment_main(VertexOut in [[stage_in]]) {
     }
 
     // Combine the diffuse color with a small ambient term (0.1)
-    float3 color = displayColor * diff + 0.1;
+    float3 color = displayColor ;//* diff + 0.1;
 
     // Return the final color with half opacity
-    return half4(color.r, color.g, color.b, 0.5);
+    return half4(color.r, color.g, color.b, 0.8);
 }

@@ -14,14 +14,14 @@ public struct RotatableGrid3D<Element> {
     public init(size: Int = 3, repeating repeatedValue: Element) {
         precondition(size > 0, "Grid size must be positive")
         self.size = size
-        self.storage = Array(repeating: repeatedValue, count: size * size * size)
+        storage = Array(repeating: repeatedValue, count: size * size * size)
     }
 
     public init(size: Int = 3, _ elements: [Element]) {
         precondition(size > 0, "Grid size must be positive")
         precondition(elements.count == size * size * size, "A NxNxN grid requires exactly N^3 elements, got \(elements.count)")
         self.size = size
-        self.storage = elements
+        storage = elements
     }
 
     /// Get or set an element at position (x, y, z), 0...(size-1) for each
@@ -29,11 +29,13 @@ public struct RotatableGrid3D<Element> {
         get { storage[index(x, y, z)] }
         set { storage[index(x, y, z)] = newValue }
     }
+
     /// Get or set by SIMD3<Int>
     public subscript(pos: SIMD3<Int>) -> Element {
         get { self[pos.x, pos.y, pos.z] }
         set { self[pos.x, pos.y, pos.z] = newValue }
     }
+
     /// Flat access
     public subscript(index: Int) -> Element {
         get { storage[index] }
@@ -42,7 +44,7 @@ public struct RotatableGrid3D<Element> {
 
     /// Utility: 3D (x,y,z) to flat index
     private func index(_ x: Int, _ y: Int, _ z: Int) -> Int {
-        precondition((0..<size).contains(x) && (0..<size).contains(y) && (0..<size).contains(z))
+        precondition((0 ..< size).contains(x) && (0 ..< size).contains(y) && (0 ..< size).contains(z))
         return z * size * size + y * size + x
     }
 
@@ -59,10 +61,10 @@ public struct RotatableGrid3D<Element> {
 
     /// Rotates a layer (0 to size-1) around the given axis (.x, .y, .z), clockwise or counterclockwise
     public mutating func rotateLayer(axis: Axis, layer: Int, clockwise: Bool = true) {
-        precondition((0..<size).contains(layer), "Layer must be between 0 and \(size - 1)")
+        precondition((0 ..< size).contains(layer), "Layer must be between 0 and \(size - 1)")
         // Gather all indices in the specified layer
         var indices: [Int] = []
-        for i in 0..<storage.count {
+        for i in 0 ..< storage.count {
             let pos = position(for: i)
             switch axis {
             case .x: if pos.x == layer { indices.append(i) }
