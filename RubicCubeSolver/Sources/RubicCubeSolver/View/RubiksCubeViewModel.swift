@@ -55,8 +55,33 @@ class RubiksCubeViewModel: ObservableObject {
     // MARK: public
 
     func enqueue(move: Move) { moveQueue.append(move) }
-    func scramble(movesCount _: Int = 20) { /* … */ }
-    func solve() { /* … */ }
+
+    func scramble(movesCount: Int = 20) {
+        func randomMove() -> Move {
+            let axis = [Move.Axis.x, .y, .z].randomElement()!
+            let layer = Int.random(in: 0 ... 2)
+            let direction: Move.Direction = Bool.random() ? .clockwise : .counterClockwise
+            return Move(axis: axis, layer: layer, direction: direction)
+        }
+
+        cubeState.reset()
+        moveQueue.removeAll()
+        var moves = 0
+        var previousMove = randomMove()
+
+        while moves < movesCount {
+            let nextMove = randomMove()
+            if !(previousMove <~> nextMove) {
+                previousMove = nextMove
+                enqueue(move: nextMove)
+                moves += 1
+            }
+        }
+    }
+
+    func solve() {
+        cubeState.reset()
+    }
 
     func startDisplayLink(on view: Any) {
         stopDisplayLink()
