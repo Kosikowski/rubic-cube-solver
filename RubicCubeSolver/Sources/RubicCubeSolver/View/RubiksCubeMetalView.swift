@@ -404,7 +404,7 @@ class Coordinator: NSObject, MTKViewDelegate {
         var maxPoint = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
 
         for i in 0 ..< 27 {
-            let modelMatrix = viewModel.cubeState.transforms[i]
+            let modelMatrix = viewModel.solver.cube.transforms[i]
             // Each cubie is a unit cube centered at its transform's translation.
             let pos = SIMD3<Float>(modelMatrix.columns.3.x, modelMatrix.columns.3.y, modelMatrix.columns.3.z)
             minPoint = min(minPoint, pos - SIMD3<Float>(0.5, 0.5, 0.5))
@@ -413,7 +413,7 @@ class Coordinator: NSObject, MTKViewDelegate {
 //        print("Cube bounding box: min=\(minPoint), max=\(maxPoint)")
 
         // Copy cubie transforms and face colors, applying animator rotation if needed for rotating layer
-        let cubeState = viewModel.cubeState
+        let cubeState = viewModel.solver
         let animator = viewModel.animator
 
         // Rotation matrix for current move animation (optional)
@@ -422,12 +422,12 @@ class Coordinator: NSObject, MTKViewDelegate {
         let rotatingLayer = animator.currentLayer
 
         for i in 0 ..< 27 {
-            let pos = RubicCubeSolver.cubePositions[i]
+            let pos = Cube.cubePositions[i]
             /// fixe for buffer
             let baseOffset = i * instanceStride // (MemoryLayout<simd_float4x4>.stride + MemoryLayout<SIMD3<Float>>.stride * 6)
 
             // Determine if this cubie is on the rotating layer:
-            var modelMatrix = cubeState.transforms[i]
+            var modelMatrix = cubeState.cube.transforms[i]
 
             if let rotationMatrix = rotationMatrixOpt {
                 // Check if cubie is in rotating layer
@@ -458,7 +458,7 @@ class Coordinator: NSObject, MTKViewDelegate {
                 .assumingMemoryBound(to: SIMD4<Float>.self)
 
             for f in 0 ..< 6 {
-                let c = cubeState.faceColors[i][f] // your SIMD3<Float>
+                let c = cubeState.cube.faceColors[i][f] // your SIMD3<Float>
                 coloursPtr[f] = SIMD4<Float>(c, 0) // pad with 0
             }
         }

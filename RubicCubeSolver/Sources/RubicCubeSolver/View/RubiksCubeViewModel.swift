@@ -35,7 +35,7 @@ class RubiksCubeViewModel: ObservableObject {
 
     // MARK: state
 
-    var cubeState = RubicCubeSolver()
+    var solver = RubicCubeSolver()
     private(set) var animator: Animator = CubeAnimator()
 
     private var moveQueue = [Move]()
@@ -64,7 +64,7 @@ class RubiksCubeViewModel: ObservableObject {
             return Move(axis: axis, layer: layer, direction: direction)
         }
 
-        cubeState.reset()
+        solver.reset()
         moveQueue.removeAll()
         var moves = 0
         var previousMove = randomMove()
@@ -80,7 +80,7 @@ class RubiksCubeViewModel: ObservableObject {
     }
 
     func solve() {
-        cubeState.reset()
+        solver.reset()
     }
 
     func startDisplayLink(on view: Any) {
@@ -122,7 +122,7 @@ class RubiksCubeViewModel: ObservableObject {
             if animator.start(move: moveQueue.removeFirst()) {}
         }
         if let finished = animator.update(deltaTime: delta) {
-            cubeState.apply(move: finished)
+            solver.apply(move: finished)
         }
         objectWillChange.send()
     }
