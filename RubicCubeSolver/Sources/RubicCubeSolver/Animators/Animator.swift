@@ -38,7 +38,7 @@ class Animator {
         currentAngle = 0
         currentLayer = move.layer
         currentAxis = move.axis
-        currentDirection = move.direction.rawValue
+        currentDirection = move.signedAngleMultiplier
         isAnimating = true
         return true
     }

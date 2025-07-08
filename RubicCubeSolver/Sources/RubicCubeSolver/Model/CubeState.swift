@@ -18,20 +18,12 @@ extension Move.Axis {
     }
 }
 
-//extension float4x4 {
-//    init(translation t: SIMD3<Float>) {
-//        self = matrix_identity_float4x4
-//        self.columns.3 = SIMD4<Float>(t.x, t.y, t.z, 1)
-//    }
-//    init(_ q: simd_quatf) {
-//        let m = matrix_float4x4(q)
-//        self.init()
-//        self.columns = m.columns
-//    }
-//}
+
+
 
 /// Represents the state of the Rubik's Cube.
 class CubeState {
+    var enablePrints = false
     /// 3x3x3 array of cubie transforms (local to cube center)
     /// Each cubie transform is simd_float4x4
     private(set) var transforms: [simd_float4x4]
@@ -95,18 +87,36 @@ class CubeState {
     /// Applies a completed move's rotation to the internal cubeState transforms
     /// This permanently updates the transforms and face colors.
     func apply(move: Move) {
+        if enablePrints {
+            print("Before move: \(move)")
+            for i in 0..<27 {
+                let pos = CubeState.cubePositions[i]
+                let layerIndex: Int
+                switch move.axis {
+                case .x: layerIndex = pos.x
+                case .y: layerIndex = pos.y
+                case .z: layerIndex = pos.z
+                }
+                if layerIndex == move.layer {
+                    print("Cubie at \(pos): old faceColors=", faceColors[i].map { String(format: "[%.2f %.2f %.2f]", $0.x, $0.y, $0.z) })
+                }
+            }
+        }
+        
         // Rotate the layer's transforms and recolor faces accordingly.
         // We rotate the 9 cubies on the specified layer around the axis by ±90°.
         // Layers: 0..2, axis: x,y,z
         // Rotation matrix for 90 degrees clockwise or counterclockwise.
-        let angle = move.anglePerStep * move.direction.rawValue
-        let rotation = simd_float4x4(rotationAbout: axisVector(move.axis), angle: angle)
+        let signed = move.signedAngleMultiplier
+        let rotation = simd_float4x4(rotationAbout: axisVector(move.axis),
+                                     angle: move.anglePerStep * signed)
         
         // Identify cubies in the rotating layer
         var newTransforms = transforms
         var newFaceColors = faceColors
         
         for i in 0..<27 {
+            
             let pos = CubeState.cubePositions[i]
             let layerIndex: Int
             switch move.axis {
@@ -114,6 +124,7 @@ class CubeState {
             case .y: layerIndex = pos.y
             case .z: layerIndex = pos.z
             }
+            
             if layerIndex == move.layer {
                 // Rotate position vector about axis center (cube center is at (1,1,1))
                 let posf = SIMD3<Float>(Float(pos.x), Float(pos.y), Float(pos.z))
@@ -132,82 +143,96 @@ class CubeState {
                     // Remove translation, apply rotation, then translate back
                     let translation = simd_float4x4(translation: -SIMD3<Float>(Float(pos.x) - 1, Float(pos.y) - 1, Float(pos.z) - 1))
                     let invTranslation = simd_float4x4(translation: SIMD3<Float>(Float(roundedPos.x) - 1, Float(roundedPos.y) - 1, Float(roundedPos.z) - 1))
-                    let newTransform = invTranslation * rotation * translation * oldTransform
-                    newTransforms[destIndex] = newTransform
+                    newTransforms[destIndex] = invTranslation * rotation * translation * oldTransform
                     
                     // Rotate face colors for cubie (simulate face color rotation)
-                    newFaceColors[destIndex] = rotateFaceColors(faceColors[i], axis: move.axis, direction: move.direction)
+                    // rotate stickers **with the same signed direction**
+                    let dirForColors: Move.Direction = (signed > 0 ? .clockwise : .counterClockwise)
+                    newFaceColors[destIndex] = rotateFaceColors(faceColors[i],
+                                                                axis: move.axis,
+                                                                direction: dirForColors)
                 }
             }
         }
-        
-        print("After move: \(move)")
-        for i in 0..<27 {
-            let pos = CubeState.cubePositions[i]
-            let layerIndex: Int
-            switch move.axis {
-            case .x: layerIndex = pos.x
-            case .y: layerIndex = pos.y
-            case .z: layerIndex = pos.z
-            }
-            if layerIndex == move.layer {
-                print("Cubie at \(pos): faceColors=", newFaceColors[i].map { String(format: "[%.2f %.2f %.2f]", $0.x, $0.y, $0.z) })
+        if enablePrints {
+            print("After move: \(move)")
+            for i in 0..<27 {
+                let pos = CubeState.cubePositions[i]
+                let layerIndex: Int
+                switch move.axis {
+                case .x: layerIndex = pos.x
+                case .y: layerIndex = pos.y
+                case .z: layerIndex = pos.z
+                }
+                if layerIndex == move.layer {
+                    print("Cubie at \(pos): new faceColors=", newFaceColors[i].map { String(format: "[%.2f %.2f %.2f]", $0.x, $0.y, $0.z) })
+                }
             }
         }
         
         transforms = newTransforms
         faceColors = newFaceColors
+        
+        if enablePrints {
+            for i in 0..<27 {
+                let pos = CubeState.cubePositions[i]
+                let colors = faceColors[i]
+                if pos.x == 2 && colors[0] != SIMD3<Float>(1, 0, 0) && colors[0] != SIMD3<Float>(0, 0, 0) {
+                    print("Invalid +X color at \(pos): \(colors[0])")
+                }
+                // Add similar checks for -X, +Y, -Y, +Z, -Z
+            }
+        }
     }
     
     /// Rotates the 6 face colors of a cubie according to the axis and direction of rotation
     private func rotateFaceColors(_ colors: [SIMD3<Float>], axis: Move.Axis, direction: Move.Direction) -> [SIMD3<Float>] {
-        // Faces order: +X, -X, +Y, -Y, +Z, -Z
-        // CLOCKWISE means from outside looking at that face.
         var newColors = Array(repeating: SIMD3<Float>(0,0,0), count: 6)
         switch axis {
         case .x:
             if direction == .clockwise {
-                // +Y->+Z, +Z->-Y, -Y->-Z, -Z->+Y
-                newColors[0] = colors[0] // +X stays
-                newColors[1] = colors[1] // -X stays
-                newColors[2] = colors[4]
-                newColors[3] = colors[5]
-                newColors[4] = colors[3]
-                newColors[5] = colors[2]
+                // For R move: +Y → +Z, +Z → -Y, -Y → -Z, -Z → +Y
+                newColors[0] = colors[0]  // +X stays
+                newColors[1] = colors[1]  // -X stays
+                newColors[2] = colors[4]  // +Y ← +Z
+                newColors[3] = colors[5]  // -Y ← -Z
+                newColors[4] = colors[3]  // +Z ← -Y
+                newColors[5] = colors[2]  // -Z ← +Y
             } else {
+                // For L move: +Y → -Z, -Z → -Y, -Y → +Z, +Z → +Y
                 newColors[0] = colors[0]
                 newColors[1] = colors[1]
-                newColors[2] = colors[5]
-                newColors[3] = colors[4]
-                newColors[4] = colors[2]
-                newColors[5] = colors[3]
+                newColors[2] = colors[5]  // +Y ← -Z
+                newColors[3] = colors[4]  // -Y ← +Z
+                newColors[4] = colors[2]  // +Z ← +Y
+                newColors[5] = colors[3]  // -Z ← -Y
             }
         case .y:
             if direction == .clockwise {
-                // +Z->+X, +X->-Z, -Z->-X, -X->+Z (looking from above)
+                // For U move: +X → -Z, -Z → -X, -X → +Z, +Z → +X
+                newColors[0] = colors[5]  // +X ← -Z
+                newColors[1] = colors[4]  // -X ← +Z
+                newColors[2] = colors[2]  // +Y stays
+                newColors[3] = colors[3]  // -Y stays
+                newColors[4] = colors[0]  // +Z ← +X
+                newColors[5] = colors[1]  // -Z ← -X
+            } else {
                 newColors[0] = colors[4]
                 newColors[1] = colors[5]
                 newColors[2] = colors[2]
                 newColors[3] = colors[3]
                 newColors[4] = colors[1]
                 newColors[5] = colors[0]
-            } else {
-                newColors[0] = colors[5]
-                newColors[1] = colors[4]
-                newColors[2] = colors[2]
-                newColors[3] = colors[3]
-                newColors[4] = colors[0]
-                newColors[5] = colors[1]
             }
         case .z:
             if direction == .clockwise {
-                // +X->+Y, +Y->-X, -X->-Y, -Y->+X (looking from front)
-                newColors[0] = colors[2]
-                newColors[1] = colors[3]
-                newColors[2] = colors[1]
-                newColors[3] = colors[0]
-                newColors[4] = colors[4]
-                newColors[5] = colors[5]
+                // For F move: +X → +Y, +Y → -X, -X → -Y, -Y → +X
+                newColors[0] = colors[2]  // +X ← +Y
+                newColors[1] = colors[3]  // -X ← -Y
+                newColors[2] = colors[1]  // +Y ← -X
+                newColors[3] = colors[0]  // -Y ← +X
+                newColors[4] = colors[4]  // +Z stays
+                newColors[5] = colors[5]  // -Z stays
             } else {
                 newColors[0] = colors[3]
                 newColors[1] = colors[2]

@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		BC5F97A92E1D1DF2003ECDDA /* RubicCubeSolver in Frameworks */ = {isa = PBXBuildFile; productRef = BC5F97A82E1D1DF2003ECDDA /* RubicCubeSolver */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		BC9F88292E19636B004C2C61 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,9 +33,33 @@
 		BC9F88322E19636B004C2C61 /* RubicCubeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RubicCubeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BC9F89EC2E1D1A07004C2C61 /* Exceptions for "RubicCube" folder in "RubicCube" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Architecture.txt,
+			);
+			target = BC9F881A2E19636A004C2C61 /* RubicCube */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		BC9F89ED2E1D1A07004C2C61 /* Exceptions for "RubicCube" folder in "Compile Sources" phase from "RubicCube" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = BC9F88172E19636A004C2C61 /* Sources */;
+			membershipExceptions = (
+				Architecture.txt,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		BC9F881D2E19636A004C2C61 /* RubicCube */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BC9F89EC2E1D1A07004C2C61 /* Exceptions for "RubicCube" folder in "RubicCube" target */,
+				BC9F89ED2E1D1A07004C2C61 /* Exceptions for "RubicCube" folder in "Compile Sources" phase from "RubicCube" target */,
+			);
 			path = RubicCube;
 			sourceTree = "<group>";
 		};
@@ -52,6 +80,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BC5F97A92E1D1DF2003ECDDA /* RubicCubeSolver in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +141,7 @@
 			);
 			name = RubicCube;
 			packageProductDependencies = (
+				BC5F97A82E1D1DF2003ECDDA /* RubicCubeSolver */,
 			);
 			productName = RubicCube;
 			productReference = BC9F881B2E19636A004C2C61 /* RubicCube.app */;
@@ -195,6 +225,9 @@
 			);
 			mainGroup = BC9F88122E19636A004C2C61;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BC5F97A72E1D1DF2003ECDDA /* XCLocalSwiftPackageReference "../RubicCubeSolver" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BC9F881C2E19636A004C2C61 /* Products */;
 			projectDirPath = "";
@@ -567,6 +600,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BC5F97A72E1D1DF2003ECDDA /* XCLocalSwiftPackageReference "../RubicCubeSolver" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../RubicCubeSolver;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BC5F97A82E1D1DF2003ECDDA /* RubicCubeSolver */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RubicCubeSolver;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = BC9F88132E19636A004C2C61 /* Project object */;
 }
