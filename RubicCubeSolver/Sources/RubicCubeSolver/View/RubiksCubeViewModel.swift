@@ -1,130 +1,104 @@
-#if os(macOS)
-import CoreVideo
-#endif
-import SwiftUI
+
+import Combine
 import MetalKit
 import simd
-import Combine
+import SwiftUI
 
-/// ViewModel bridging CubeState and Metal rendering.
+#if os(macOS)
+    import AppKit // for NSView.displayLink
+#else
+    import QuartzCore // for CADisplayLink
+#endif
 
 @MainActor
 class RubiksCubeViewModel: ObservableObject {
+    enum UserMove: String, CaseIterable {
+        case U, R, L, F, B, D, H, V
+
+        var displayName: String {
+            rawValue.uppercased()
+        }
+
+        func move() -> Move? {
+            switch self {
+            case .U: return Move(axis: .y, layer: 2, direction: .clockwise)
+            case .D: return Move(axis: .y, layer: 0, direction: .clockwise)
+            case .L: return Move(axis: .x, layer: 0, direction: .clockwise)
+            case .R: return Move(axis: .x, layer: 2, direction: .clockwise)
+            case .F: return Move(axis: .z, layer: 2, direction: .clockwise)
+            case .B: return Move(axis: .z, layer: 0, direction: .clockwise)
+            case .H: return Move(axis: .y, layer: 1, direction: .clockwise)
+            case .V: return Move(axis: .x, layer: 1, direction: .clockwise)
+            }
+        }
+    }
+
+    // MARK: state
+
     var cubeState = CubeState()
     private(set) var animator = Animator()
-    
+
     private var moveQueue = [Move]()
-    
-    #if os(macOS)
-    private var displayLink: CVDisplayLink?
-    private var needsDisplayUpdate = false
-    #else
-    private var displayLink: CADisplayLink?
-    #endif
     private var lastTimestamp: CFTimeInterval = 0
-    
-    init() {
-        startDisplayLink()
-    }
-    
-    deinit {
-        #if os(macOS)
-        if let displayLink = displayLink {
-            CVDisplayLinkStop(displayLink)
-        }
-        #else
-        displayLink?.invalidate()
-        #endif
-    }
-    
-    func cleanup() {
-        
-    }
-    
-    /// Enqueue a move to be executed sequentially.
-    func enqueue(move: Move) {
-        moveQueue.append(move)
-    }
-    
-    /// Scramble the cube with random moves
-    func scramble(movesCount: Int = 20) {
-        cubeState.reset()
-        moveQueue.removeAll()
-        for _ in 0..<movesCount {
-            let axis = [Move.Axis.x, .y, .z].randomElement()!
-            let layer = Int.random(in: 0...2)
-            let direction: Move.Direction = Bool.random() ? .clockwise : .counterClockwise
-            enqueue(move: Move(axis: axis, layer: layer, direction: direction))
-        }
-    }
-    
-    /// Solve the cube by resetting the state and clearing moves
-    func solve() {
-        moveQueue.removeAll()
-        cubeState.reset()
-    }
-    
-    private func startDisplayLink() {
-        #if os(macOS)
-        var link: CVDisplayLink?
-        CVDisplayLinkCreateWithActiveCGDisplays(&link)
-        displayLink = link
-        if let displayLink = displayLink {
-            CVDisplayLinkSetOutputCallback(displayLink, { (_, inNow, _, _, _, userInfo) -> CVReturn in
-                let viewModel = Unmanaged<RubiksCubeViewModel>.fromOpaque(userInfo!).takeUnretainedValue()
-                viewModel.cvDisplayLinkFired(time: inNow.pointee)
-                return kCVReturnSuccess
-            }, UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()))
-            CVDisplayLinkStart(displayLink)
-        }
-        #else
-        displayLink = CADisplayLink(target: self, selector: #selector(update))
-        displayLink?.add(to: .main, forMode: .default)
-        #endif
-    }
-    
+
     #if os(macOS)
-    private func cvDisplayLinkFired(time: CVTimeStamp) {
-        // Convert CVTimeStamp to time interval
-        let timestamp = Double(time.videoTime) / Double(time.videoTimeScale)
-        DispatchQueue.main.async {
-            self.updateDisplayLink(timestamp: timestamp)
-        }
-    }
+        private var displayLink: CADisplayLink?
+    #else
+        private var displayLink: CADisplayLink?
     #endif
-    
-    @objc private func update(link: CADisplayLink) {
-        updateDisplayLink(timestamp: link.timestamp)
+
+    let allMoves: [UserMove] = UserMove.allCases
+
+    init() {}
+    deinit {}
+
+    // MARK: public
+
+    func enqueue(move: Move) { moveQueue.append(move) }
+    func scramble(movesCount _: Int = 20) { /* … */ }
+    func solve() { /* … */ }
+
+    func startDisplayLink(on view: Any) {
+        stopDisplayLink()
+
+        #if os(macOS)
+            guard let nsView = view as? NSView else { return }
+            displayLink = nsView.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
+        #else
+            guard let mtk = view as? MTKView else { return }
+            displayLink = CADisplayLink(target: self, selector: #selector(displayLinkFired(_:)))
+        #endif
+
+        displayLink?.add(to: .current, forMode: .common)
     }
-    
-    private func updateDisplayLink(timestamp: CFTimeInterval) {
+
+    func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+        lastTimestamp = 0
+    }
+
+    // MARK: callbacks
+
+    @objc private func displayLinkFired(_ link: CADisplayLink) {
+        let ts = link.timestamp
+        processFrame(timestamp: ts)
+    }
+
+    private func processFrame(timestamp: CFTimeInterval) {
         if lastTimestamp == 0 {
             lastTimestamp = timestamp
             return
         }
-        let deltaTime = timestamp - lastTimestamp
+        let delta = timestamp - lastTimestamp
         lastTimestamp = timestamp
-        
+
         if animator.currentMove == nil, !moveQueue.isEmpty {
-            // Start next move
-            if animator.start(move: moveQueue.first!) {
-                moveQueue.removeFirst()
-            }
+            if animator.start(move: moveQueue.removeFirst()) {}
         }
-        
-        // Updated here as per instructions:
-        let finishedMove = animator.update(deltaTime: deltaTime)
-        let animating = (animator.currentMove != nil)
-        if let move = finishedMove {
-             cubeState.apply(move: move)  // Temporarily disabled sticker update after animation complete
+        if let finished = animator.update(deltaTime: delta) {
+            cubeState.apply(move: finished)
         }
-        
-        // Remove previous redundant checks and comments about applying moves here
-        
-        // Publish updates for SwiftUI views to redraw
-        DispatchQueue.main.async {
-            self.objectWillChange.send()
-        }
+        objectWillChange.send()
     }
 }
-
