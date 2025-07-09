@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		BC5F97A92E1D1DF2003ECDDA /* RubicCubeSolver in Frameworks */ = {isa = PBXBuildFile; productRef = BC5F97A82E1D1DF2003ECDDA /* RubicCubeSolver */; };
+		BC615E0C2E1E4F18001398AB /* RubicCubeSolver in Frameworks */ = {isa = PBXBuildFile; productRef = BC615E0B2E1E4F18001398AB /* RubicCubeSolver */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BC615E0C2E1E4F18001398AB /* RubicCubeSolver in Frameworks */,
 				BC5F97A92E1D1DF2003ECDDA /* RubicCubeSolver in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -142,6 +144,7 @@
 			name = RubicCube;
 			packageProductDependencies = (
 				BC5F97A82E1D1DF2003ECDDA /* RubicCubeSolver */,
+				BC615E0B2E1E4F18001398AB /* RubicCubeSolver */,
 			);
 			productName = RubicCube;
 			productReference = BC9F881B2E19636A004C2C61 /* RubicCube.app */;
@@ -226,7 +229,7 @@
 			mainGroup = BC9F88122E19636A004C2C61;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				BC5F97A72E1D1DF2003ECDDA /* XCLocalSwiftPackageReference "../RubicCubeSolver" */,
+				BC615E0A2E1E4F18001398AB /* XCLocalSwiftPackageReference "../../RubicCube" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BC9F881C2E19636A004C2C61 /* Products */;
@@ -608,14 +611,18 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		BC5F97A72E1D1DF2003ECDDA /* XCLocalSwiftPackageReference "../RubicCubeSolver" */ = {
+		BC615E0A2E1E4F18001398AB /* XCLocalSwiftPackageReference "../../RubicCube" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../RubicCubeSolver;
+			relativePath = ../../RubicCube;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		BC5F97A82E1D1DF2003ECDDA /* RubicCubeSolver */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RubicCubeSolver;
+		};
+		BC615E0B2E1E4F18001398AB /* RubicCubeSolver */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RubicCubeSolver;
 		};
