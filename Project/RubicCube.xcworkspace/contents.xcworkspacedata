@@ -2,9 +2,9 @@
 <Workspace
    version = "1.0">
    <FileRef
-      location = "group:RubicCubeSolver">
+      location = "group:..">
    </FileRef>
    <FileRef
-      location = "container:Project/RubicCube.xcodeproj">
+      location = "container:RubicCube.xcodeproj">
    </FileRef>
 </Workspace>
