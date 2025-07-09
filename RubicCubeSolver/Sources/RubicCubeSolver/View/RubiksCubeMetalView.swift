@@ -358,7 +358,6 @@ class Coordinator: NSObject, MTKViewDelegate {
     func draw(in view: MTKView) {
         guard let drawable = view.currentDrawable,
               let descriptor = view.currentRenderPassDescriptor,
-              let device = view.device,
               let commandQueue = commandQueue else { return }
 
         if descriptor.depthAttachment == nil {
@@ -527,3 +526,4 @@ class Coordinator: NSObject, MTKViewDelegate {
         }
     #endif
 }
+

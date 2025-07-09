@@ -8,6 +8,15 @@ import Foundation
 import simd
 import SwiftUI
 
+/// Protocol defining the requirements for a Rubik's Cube solver.
+/// Any solver must have a cube property, be able to reset its state,
+/// and apply moves to the cube.
+protocol Solver {
+    var cube: Cube { get set }
+    func reset()
+    func apply(move: Move)
+}
+
 extension Move.Axis {
     var index: Int {
         switch self {
@@ -21,7 +30,7 @@ extension Move.Axis {
 /// Acts on a `Cube` state to perform Rubik's Cube moves and update cube state accordingly.
 /// Does not store cube state internally but manipulates the passed-in `Cube` instance.
 /// This separation allows for cleaner state management and easier state sharing or persistence.
-class RubicCubeSolver {
+class RubicCubeSolver: Solver {
     /// The cube state that this solver manipulates.
     var cube: Cube
 

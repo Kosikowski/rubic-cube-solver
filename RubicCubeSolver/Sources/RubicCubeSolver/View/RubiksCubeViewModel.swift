@@ -1,4 +1,3 @@
-
 import Combine
 import MetalKit
 import simd
@@ -35,7 +34,7 @@ class RubiksCubeViewModel: ObservableObject {
 
     // MARK: state
 
-    var solver = RubicCubeSolver()
+    var solver: Solver = RubicCubeSolver()
     private(set) var animator: Animator = CubeAnimator()
 
     private var moveQueue = [Move]()
