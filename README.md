@@ -14,7 +14,7 @@ A 3D Rubik's Cube simulator and solver built with SwiftUI and Metal for iOS and 
 
 ## Architecture
 
-The project follows a clean architecture pattern with three main components:
+The project follows a clean architecture pattern with three main components that work together to provide a smooth, interactive 3D Rubik's Cube experience:
 
 ```
 ┌──────────────────┐      ┌──────────────────┐      ┌───────────────────┐
@@ -30,10 +30,99 @@ The project follows a clean architecture pattern with three main components:
 
 ### Core Components
 
-- **Solver Module**: Handles cube state manipulation and move application
-- **Animation Queue**: Manages smooth transitions between cube states
-- **Metal Renderer**: GPU-accelerated 3D rendering with custom shaders
-- **SwiftUI Interface**: Modern, responsive user interface
+#### 1. Solver Module (CPU - Swift)
+The brain of the application that handles all cube logic and state management:
+
+- **`RubicCubeSolver`**: Core solver class implementing the `Solver` protocol
+  - Manages cube state through a `Cube` instance
+  - Applies moves using 3D rotation mathematics with SIMD vectors
+  - Updates cubie positions, orientations, and face colors
+  - Supports debug mode for move validation and logging
+
+- **`Cube` Model**: Represents the 3D cube state
+  - Contains 27 `Cubie` objects in a 3x3x3 grid
+  - Each cubie stores position, transform matrix, and face colors
+  - Uses `RotatableGrid3D` for efficient 3D array operations
+  - Maintains both current and original positions for state tracking
+
+- **`Move` System**: Defines cube rotations
+  - Axis-based rotations (X, Y, Z)
+  - Layer specification (0-2 for each axis)
+  - Direction control (clockwise/counter-clockwise)
+  - Mathematical rotation matrices for precise 3D transformations
+
+#### 2. Animation Queue (Swift)
+Manages smooth transitions and user experience:
+
+- **`CubeAnimator`**: Handles move animations
+  - Interpolates between cube states over time
+  - Provides smooth rotation transitions
+  - Manages animation timing and completion callbacks
+  - Supports configurable animation speeds
+
+- **`RubiksCubeViewModel`**: Coordinates the entire system
+  - Manages move queue and animation pipeline
+  - Handles user input and button interactions
+  - Controls display link for 60fps rendering
+  - Implements scrambling algorithms with move validation
+  - Bridges between UI and core logic
+
+- **Display Link Integration**: Ensures smooth 60fps updates
+  - Uses `CADisplayLink` for frame-perfect timing
+  - Processes animation frames and applies completed moves
+  - Triggers UI updates through `@Published` properties
+
+#### 3. Metal Renderer (GPU)
+High-performance 3D visualization:
+
+- **`RubiksCubeMetalView`**: Metal-based 3D rendering
+  - Custom Metal shaders for cube visualization
+  - Real-time 3D transformations and lighting
+  - Efficient GPU-based rendering pipeline
+  - Support for both iOS and macOS Metal APIs
+
+- **Shader System**: Custom Metal shaders
+  - Vertex shaders for 3D transformations
+  - Fragment shaders for lighting and coloring
+  - Optimized for mobile and desktop GPUs
+  - Handles 27 cubies with individual transforms
+
+- **3D Mathematics**: SIMD-based calculations
+  - Uses `simd_float4x4` matrices for transformations
+  - Efficient vector operations for rotations
+  - Precise 3D positioning and orientation
+  - Cross-platform mathematical consistency
+
+#### 4. SwiftUI Interface
+Modern, responsive user interface:
+
+- **`ContentView`**: Main application interface
+  - Clean, intuitive button layout
+  - Real-time cube visualization
+  - Responsive design for different screen sizes
+  - Accessibility support built-in
+
+- **State Management**: Reactive UI updates
+  - `@StateObject` for view model binding
+  - Automatic UI updates on cube state changes
+  - Smooth integration with animation system
+  - Cross-platform UI consistency
+
+### Data Flow
+
+1. **User Input**: Button presses trigger move enqueueing
+2. **Move Processing**: Animation queue processes moves sequentially
+3. **State Updates**: Solver applies completed moves to cube state
+4. **Rendering**: Metal renderer displays updated cube in 3D
+5. **UI Refresh**: SwiftUI updates interface based on new state
+
+### Key Design Patterns
+
+- **Protocol-Oriented Programming**: `Solver` protocol for extensibility
+- **MVVM Architecture**: Clear separation between view and business logic
+- **Dependency Injection**: Solver and animator injected into view model
+- **Reactive Programming**: Combine framework for state management
+- **Resource Management**: Efficient Metal resource handling
 
 ## Requirements
 
@@ -133,12 +222,6 @@ Moves are defined by:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Author
-
-**Mateusz Kosikowski**
-
-- GitHub: [@yourusername](https://github.com/yourusername)
 
 ## Acknowledgments
 
