@@ -14,6 +14,10 @@ let package = Package(
             name: "RubicCubeSolver",
             targets: ["RubicCubeSolver"]
         ),
+        .library(
+            name: "TwoPhaseSolver",
+            targets: ["TwoPhaseSolver"]
+        ),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -24,9 +28,17 @@ let package = Package(
                 .process("Shaders"),
             ]
         ),
+        .target(
+            name: "TwoPhaseSolver",
+            dependencies: []
+        ),
         .testTarget(
             name: "RubicCubeSolverTests",
             dependencies: ["RubicCubeSolver"]
+        ),
+        .testTarget(
+            name: "TwoPhaseSolverTests",
+            dependencies: ["TwoPhaseSolver"]
         ),
     ]
 )
